@@ -1,11 +1,32 @@
 # Entroly
 
+[![PyPI](https://img.shields.io/pypi/v/entroly)](https://pypi.org/project/entroly/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/core-Rust%20%2B%20PyO3-orange)](entroly-core/)
+
 **Information-theoretic context optimization for AI coding agents.**
 
 Every AI coding tool manages context with dumb FIFO truncation — stuffing tokens until the window is full, then cutting from the top. Entroly applies mathematics to select the **optimal** context subset.
 
-```
+```bash
 pip install entroly
+```
+
+## Zero-Friction Setup
+
+```bash
+pip install entroly
+cd your-project
+entroly init        # auto-detects Cursor / VS Code / Windsurf / Claude Desktop
+                    # writes the correct MCP config in one command
+# Restart your AI tool — done.
+```
+
+`entroly init` detects your project type and AI tool, generates the right `mcp.json`, and confirms how many files it will auto-index on first run. The MCP server then automatically indexes your codebase (via `git ls-files`) when it starts — no manual `remember_fragment` calls needed.
+
+```bash
+entroly serve       # start MCP server with auto-indexing
+entroly dashboard   # show live ROI metrics (cost saved, latency, compression)
 ```
 
 ## Architecture
@@ -35,13 +56,12 @@ An MCP server that sits between your AI coding tool and the LLM, providing:
 
 ### Cursor
 
-Add to `.cursor/mcp.json`:
-
 ```json
 {
   "mcpServers": {
     "entroly": {
-      "command": "entroly"
+      "command": "entroly",
+      "args": ["serve"]
     }
   }
 }
@@ -50,7 +70,7 @@ Add to `.cursor/mcp.json`:
 ### Claude Code
 
 ```bash
-claude mcp add entroly -- entroly
+claude mcp add entroly -- entroly serve
 ```
 
 ### Cline / Any MCP Client
@@ -59,10 +79,12 @@ claude mcp add entroly -- entroly
 {
   "entroly": {
     "command": "entroly",
-    "args": []
+    "args": ["serve"]
   }
 }
 ```
+
+> **Tip:** Run `entroly init` to have this generated automatically for your tool.
 
 ## MCP Tools
 
@@ -144,13 +166,39 @@ Session statistics and cost savings.
 ```
 get_stats()
 → {
-    "fragments": 142,
-    "total_tokens": 384000,
-    "savings": {
-      "total_tokens_saved": 284000,
-      "total_duplicates_caught": 12,
-      "estimated_cost_saved_usd": 0.85
-    }
+    "session":  { "total_fragments": 142, "total_tokens_tracked": 384000, "avg_entropy": 0.84 },
+    "savings":  { "total_tokens_saved": 284000, "estimated_cost_saved_usd": 0.85 },
+    "performance": { "avg_optimize_us": 320, "context_compression": 0.39 },
+    "memory":   { "total_kb": 612, "naive_cost_per_call_usd": 0.0115, "optimized_cost_per_call_usd": 0.0044 },
+    "dedup":    { "duplicates_detected": 12 },
+    "context_efficiency": { "context_efficiency": 0.88 }
+  }
+```
+
+### `entroly_dashboard`
+Full product-owner dashboard with live ROI from the running session. Shows real numbers — no mocks or synthetic data.
+
+```
+entroly_dashboard()
+→ {
+    "💰 money": {
+      "cost_per_call_without_entroly": "$0.0115",
+      "cost_per_call_with_entroly":    "$0.0044",
+      "savings_pct": "62%",
+      "insight": "Each optimize call costs $0.0044 instead of $0.0115. Over 38 calls, that's $0.27 saved."
+    },
+    "⚡ performance": {
+      "avg_optimize_latency": "320µs (0.32ms)",
+      "vs_api_roundtrip":     "6250x faster than a typical API call"
+    },
+    "🧠 bloat_prevention": {
+      "context_compression": "39.00%",
+      "memory_footprint":    "612 KB",
+      "duplicates_caught":   "12"
+    },
+    "🎯 selection_quality": { "information_density": "0.8840 bits/token" },
+    "🔒 safety":            { "persistent_index": "active" },
+    "📊 last_optimization": { "context_sufficiency": "91%", "selected": 14, "excluded": 128 }
   }
 ```
 
