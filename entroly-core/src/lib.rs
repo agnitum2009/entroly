@@ -1707,7 +1707,7 @@ mod tests {
 
     #[test]
     fn test_sufficiency_full() {
-        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.1, 10_000);
+        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.1, 10_000, 100);
 
         // Register a symbol in the dep graph
         engine.dep_graph.register_symbol("calculate_tax", "f1");
@@ -1738,7 +1738,7 @@ mod tests {
 
     #[test]
     fn test_exploration_rate_bounds() {
-        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.1, 10_000);
+        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.1, 10_000, 100);
         engine.set_exploration_rate(1.5);
         assert!((engine.exploration_rate - 1.0).abs() < 0.001);
         engine.set_exploration_rate(-0.5);
@@ -1765,7 +1765,7 @@ mod tests {
     #[test]
     fn test_recall_returns_correct_fragment_not_random() {
         use crate::dedup::simhash;
-        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.0, 10_000);
+        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.0, 10_000, 100);
 
         // Target: database code
         let target = "fn connect_to_database(host: &str, port: u16) -> Connection { ... }";
@@ -1824,7 +1824,7 @@ mod tests {
         use crate::dedup::simhash;
         let query = "async fn process_payment(amount: f64, currency: &str) -> Result<Receipt>";
 
-        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.0, 10_000);
+        let mut engine = EntrolyEngine::new(0.30, 0.25, 0.25, 0.20, 15, 0.05, 3, 0.0, 10_000, 100);
         let query_fp = simhash(query);
 
         // Varying content: exact match, near match, unrelated

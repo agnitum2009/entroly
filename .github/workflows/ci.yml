@@ -68,9 +68,8 @@ jobs:
 
       - name: Install entroly Python package
         run: |
-          cd entroly
-          ../.venv/bin/pip install -e ".[native]"
-          ../.venv/bin/pip install psutil
+          .venv/bin/pip install -e ".[native]"
+          .venv/bin/pip install psutil
 
       - name: Verify imports
         run: |
