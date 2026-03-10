@@ -22,26 +22,37 @@
 
 ---
 
-## Zero-Friction Setup
+## Setup (Build from Source)
+
+> **Note:** Pre-built wheels and Docker images are coming soon. For now, build from source:
 
 ```bash
-pip install entroly[native]
-cd your-project
-entroly init        # auto-detects Cursor / VS Code / Windsurf / Claude Desktop
-                    # writes the correct MCP config in one command
+# Clone the repo
+git clone https://github.com/juyterman1000/entroly
+cd entroly
+
+# Build the Rust engine (requires Rust toolchain)
+pip install maturin
+cd entroly-core && maturin develop --release && cd ..
+
+# Install the Python package
+pip install -e ".[native]"
+
+# Initialize for your AI tool (auto-detects Cursor / VS Code / Claude Desktop)
+entroly init
 # Restart your AI tool — done.
 ```
-
-`entroly init` detects your project type and AI tool, generates the right `mcp.json`, and confirms how many files it will auto-index on first run. The MCP server then automatically indexes your codebase (via `git ls-files`) when it starts — no manual `remember_fragment` calls needed.
 
 ```bash
 entroly serve       # start MCP server with auto-indexing
 entroly dashboard   # show live ROI metrics (cost saved, latency, compression)
 ```
 
+`entroly init` detects your project type and AI tool, generates the right `mcp.json`, and confirms how many files it will auto-index on first run. The MCP server automatically indexes your codebase (via `git ls-files`) when it starts.
+
 ## Architecture
 
-Hybrid Rust + Python: CPU-intensive math (knapsack DP, entropy, SimHash, LSH, dependency graph) runs in Rust via PyO3 for 50-100x speedup. MCP protocol and orchestration run in Python via FastMCP. The Rust extension (`entroly-core`) is required — install with `pip install entroly[native]`.
+Hybrid Rust + Python: CPU-intensive math (knapsack DP, entropy, SimHash, LSH, dependency graph) runs in Rust via PyO3 for 50-100x speedup. MCP protocol and orchestration run in Python via FastMCP.
 
 ## What It Does
 

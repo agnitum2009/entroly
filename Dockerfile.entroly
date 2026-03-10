@@ -29,9 +29,9 @@ RUN pip install --no-cache-dir /tmp/wheels/*.whl "mcp>=1.0.0" psutil \
 
 # ── Python package ────────────────────────────────────────────────────────────
 # Full entroly package — all source files
-COPY entroly/entroly/ /app/entroly/
-COPY entroly/pyproject.toml /app/
-COPY entroly/README.md /app/
+COPY entroly/ /app/entroly/
+COPY pyproject.toml /app/
+COPY README.md /app/
 
 # ── Autotune system ───────────────────────────────────────────────────────────
 # bench/ = evaluation harness + cases.json + autotune loop

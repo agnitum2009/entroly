@@ -1,14 +1,14 @@
 """
-entroly Docker launcher — cross-platform entry point.
+entroly launcher — smart entry point with graceful fallback.
 
-When installed via `pip install entroly`, this is what runs.
-It launches the actual MCP server inside a Docker container so it
-works identically on Linux, macOS, and Windows without needing Rust.
+Priority order:
+  1. If ENTROLY_NO_DOCKER=1 or inside Docker → run native Python server
+  2. If entroly-core is installed locally → run native (no Docker needed)
+  3. If Docker is available → pull and run the container
+  4. Otherwise → show clear install instructions and exit
 
-The Docker image is built from Dockerfile.entroly and pushed to:
-  ghcr.io/juyterman1000/entroly:latest
-
-MCP stdio protocol is passed through transparently via stdin/stdout.
+This ensures `pip install entroly && entroly serve` gives a useful
+experience no matter what's installed.
 """
 
 from __future__ import annotations
@@ -34,6 +34,15 @@ def _docker_available() -> bool:
         return False
 
 
+def _rust_engine_available() -> bool:
+    """Check if entroly-core (Rust engine) is importable."""
+    try:
+        import entroly_core  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _pull_image() -> None:
     """Pull (or update) the entroly Docker image silently."""
     subprocess.run(
@@ -45,49 +54,66 @@ def _pull_image() -> None:
 
 
 def _run_native() -> None:
-    """Fall back to running local Python server (when inside Docker)."""
+    """Run the local Python MCP server (native mode)."""
     from entroly.server import main  # noqa: PLC0415
     main()
 
 
 def launch() -> None:
-    """Main entry point — docker launch or native fallback."""
+    """Main entry point — tries native first, then Docker, then helpful error."""
 
-    # If already inside Docker (or user explicitly opts out), go native
+    # If explicitly set to no-docker or already inside Docker, go native
     if os.environ.get("ENTROLY_NO_DOCKER") or os.path.exists("/.dockerenv"):
         _run_native()
         return
 
-    # Check Docker is installed and running
-    if not _docker_available():
+    # If Rust engine is installed locally, run native (best experience)
+    if _rust_engine_available():
+        _run_native()
+        return
+
+    # Try Docker
+    if _docker_available():
+        _pull_image()
+
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            *_env_passthrough(),
+            DOCKER_IMAGE,
+        ]
+
+        try:
+            result = subprocess.run(cmd, check=False)
+            sys.exit(result.returncode)
+        except KeyboardInterrupt:
+            sys.exit(0)
+    else:
+        # No Rust engine, no Docker — give clear instructions
         print(
-            "[entroly] Docker is not running. "
-            "Please start Docker Desktop (or the Docker daemon) and try again.\n"
-            "Alternatively, set ENTROLY_NO_DOCKER=1 to run without Docker "
-            "(requires entroly-core Rust wheel for your platform).",
+            "=" * 65,
+            "",
+            "  entroly: Rust engine (entroly-core) is not installed,",
+            "  and Docker is not available.",
+            "",
+            "  To use entroly, choose one of these options:",
+            "",
+            "  Option 1 — Install with native Rust engine (recommended):",
+            "      pip install entroly[native]",
+            "",
+            "  Option 2 — Build from source:",
+            "      git clone https://github.com/juyterman1000/entroly",
+            "      cd entroly/entroly-core",
+            "      pip install maturin && maturin develop --release",
+            "      cd .. && pip install -e .",
+            "",
+            "  Option 3 — Use Docker:",
+            "      Install Docker Desktop, then run: entroly serve",
+            "",
+            "=" * 65,
+            sep="\n",
             file=sys.stderr,
         )
         sys.exit(1)
-
-    # Pull latest image (no-op if already cached; silent on failure)
-    _pull_image()
-
-    # Launch MCP server via Docker, binding stdio
-    # --rm        → auto-remove container when done
-    # -i          → keep stdin open (required for MCP stdio protocol)
-    # --network=host on Linux for best performance; bridge on Mac/Win
-    cmd = [
-        "docker", "run", "--rm", "-i",
-        # Pass through any entroly env vars prefixed with ENTROLY_
-        *_env_passthrough(),
-        DOCKER_IMAGE,
-    ]
-
-    try:
-        result = subprocess.run(cmd, check=False)
-        sys.exit(result.returncode)
-    except KeyboardInterrupt:
-        sys.exit(0)
 
 
 def _env_passthrough() -> list[str]:

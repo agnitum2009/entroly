@@ -44,6 +44,9 @@ pub struct ContextFragment {
     pub is_pinned: bool,
     #[pyo3(get, set)]
     pub simhash: u64,
+    #[pyo3(get, set)]
+    #[serde(default)]
+    pub insertion_index: u64,
 
     // Hierarchical fragmentation: optional skeleton variant
     #[pyo3(get, set)]
@@ -95,6 +98,7 @@ impl ContextFragment {
             skeleton_token_count: None,
             prototype_id,
             salience: 1.0,
+            insertion_index: 0,
         }
     }
 }

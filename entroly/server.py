@@ -1568,7 +1568,7 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
     resolved_strategy = _auto_detect_strategy()
     logger.info(
         f"Autotune: daemon launched (tid={t.ident or 0}, "
-        f"strategy=auto→{resolved_strategy}, idle_only=True)"
+        f"strategy=auto→{resolved_strategy}, idle_only={at_cfg.get('idle_only', True)})"
     )
 
 

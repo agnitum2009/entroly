@@ -99,6 +99,8 @@ pub struct EntrolyEngine {
     total_optimizations: u64,
     total_fragments_ingested: u64,
     total_duplicates_caught: u64,
+    cumulative_tokens_used: u64,
+    cumulative_information: f64,
 
     // Fragment ID generation — per-instance prefix guarantees isolation
     // between multiple EntrolyEngine instances in the same process.
@@ -112,6 +114,9 @@ pub struct EntrolyEngine {
     // Exploration
     total_explorations: u64,
     exploration_rate: f64,
+
+    // Sliding Window Recall (0 = no limit)
+    recall_window_size: usize,
 
     // Last optimization snapshot (for explainability)
     last_optimization: Option<OptimizationSnapshot>,
@@ -155,7 +160,8 @@ impl EntrolyEngine {
     #[pyo3(signature = (
         w_recency=0.30, w_frequency=0.25, w_semantic=0.25, w_entropy=0.20,
         decay_half_life=15, min_relevance=0.05,
-        hamming_threshold=3, exploration_rate=0.1, max_fragments=10000
+        hamming_threshold=3, exploration_rate=0.1, max_fragments=10000,
+        recall_window_size=0
     ))]
     pub fn new(
         w_recency: f64,
@@ -167,6 +173,7 @@ impl EntrolyEngine {
         hamming_threshold: u32,
         exploration_rate: f64,
         max_fragments: usize,
+        recall_window_size: usize,
     ) -> Self {
         // Derive per-instance ID using xorshift64 on the global seed.
         // Each engine gets a unique instance_id, so fragment IDs are
@@ -196,11 +203,14 @@ impl EntrolyEngine {
             total_optimizations: 0,
             total_fragments_ingested: 0,
             total_duplicates_caught: 0,
+            cumulative_tokens_used: 0,
+            cumulative_information: 0.0,
             instance_id,
             id_counter: 0,
             max_fragments,
             total_explorations: 0,
             exploration_rate: exploration_rate.clamp(0.0, 1.0),
+            recall_window_size,
             last_optimization: None,
             lsh_index: lsh::LshIndex::new(),
             context_scorer: lsh::ContextScorer::default(),
@@ -340,6 +350,7 @@ impl EntrolyEngine {
             frag.access_count = 1;
             frag.is_pinned = effective_pinned;
             frag.simhash = fp;
+            frag.insertion_index = self.total_fragments_ingested as u64;
 
             // Hierarchical fragmentation: extract skeleton for code files
             if let Some(skel) = skeleton::extract_skeleton(&content, &source) {
@@ -416,7 +427,16 @@ impl EntrolyEngine {
                 .map(|fid| (fid.clone(), self.feedback.learned_value(fid)))
                 .collect();
 
-            let mut frags: Vec<ContextFragment> = self.fragments.values().cloned().collect();
+            let mut frags: Vec<ContextFragment> = self.fragments.values()
+                .filter(|f| {
+                    if self.recall_window_size > 0 {
+                        f.insertion_index > self.total_fragments_ingested.saturating_sub(self.recall_window_size as u64) || f.is_pinned
+                    } else {
+                        true
+                    }
+                })
+                .cloned()
+                .collect();
             
             let raw_weights = [
                 self.w_recency,
@@ -812,6 +832,17 @@ impl EntrolyEngine {
             }
             py_result.set_item("selected", selected_list)?;
 
+            self.cumulative_tokens_used += final_tokens as u64;
+            let mut current_info: f64 = ordered_indices.iter().map(|&idx| frags[idx].entropy_score * frags[idx].token_count as f64).sum();
+            current_info += skeleton_indices.iter().filter_map(|&idx| {
+                if let (Some(_), Some(tc)) = (&frags[idx].skeleton_content, frags[idx].skeleton_token_count) {
+                    Some(frags[idx].entropy_score * tc as f64)
+                } else {
+                    None
+                }
+            }).sum::<f64>();
+            self.cumulative_information += current_info;
+
             Ok(py_result.into())
         })
     }
@@ -834,7 +865,12 @@ impl EntrolyEngine {
                 candidates.iter()
                     .filter_map(|&slot| {
                         let frag_id = self.fragment_slot_ids.get(slot)?;
-                        self.fragments.get(frag_id)
+                        let f = self.fragments.get(frag_id)?;
+                        if self.recall_window_size > 0 && f.insertion_index <= self.total_fragments_ingested.saturating_sub(self.recall_window_size as u64) && !f.is_pinned {
+                            None
+                        } else {
+                            Some(f)
+                        }
                     })
                     .map(|f| {
                         let dist = hamming_distance(query_fp, f.simhash);
@@ -856,6 +892,13 @@ impl EntrolyEngine {
             } else {
                 // Cold-start fallback: O(N) brute force
                 self.fragments.values()
+                    .filter(|f| {
+                        if self.recall_window_size > 0 {
+                            f.insertion_index > self.total_fragments_ingested.saturating_sub(self.recall_window_size as u64) || f.is_pinned
+                        } else {
+                            true
+                        }
+                    })
                     .map(|f| {
                         let dist = hamming_distance(query_fp, f.simhash);
                         let simhash_sim = 1.0 - (dist as f64 / 64.0);
@@ -945,6 +988,17 @@ impl EntrolyEngine {
             dedup.set_item("indexed_fragments", self.dedup_index.size())?;
             dedup.set_item("duplicates_detected", self.dedup_index.duplicates_detected)?;
             result.set_item("dedup", dedup)?;
+
+            let context_efficiency = if self.cumulative_tokens_used > 0 {
+                self.cumulative_information / (self.cumulative_tokens_used as f64 / 1000.0)
+            } else {
+                0.0
+            };
+            let eff_block = PyDict::new(py);
+            eff_block.set_item("cumulative_tokens_used", self.cumulative_tokens_used)?;
+            eff_block.set_item("cumulative_information", (self.cumulative_information * 10000.0).round() / 10000.0)?;
+            eff_block.set_item("context_efficiency", (context_efficiency * 10000.0).round() / 10000.0)?;
+            result.set_item("context_efficiency", eff_block)?;
 
             Ok(result.into())
         })
