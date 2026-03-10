@@ -1,10 +1,10 @@
 {
-  "name": "@entroly/mcp",
+  "name": "entroly-mcp",
   "version": "0.4.0",
   "description": "Information-theoretic context optimization MCP server for AI coding agents. Bridge package that wraps the Entroly Python engine.",
   "main": "index.js",
   "bin": {
-    "entroly-mcp": "./index.js"
+    "entroly-mcp": "index.js"
   },
   "files": [
     "index.js",

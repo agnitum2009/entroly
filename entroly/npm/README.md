@@ -1,4 +1,4 @@
-# @entroly/mcp
+# entroly-mcp
 
 NPM bridge for the Entroly MCP server. This package wraps the Python `entroly` CLI so you can use it with Cursor, VS Code, and other MCP clients that prefer npm-based tool installation.
 
@@ -19,7 +19,7 @@ Add to your Cursor MCP config (`.cursor/mcp.json`):
   "mcpServers": {
     "entroly": {
       "command": "npx",
-      "args": ["@entroly/mcp"]
+      "args": ["-y", "entroly-mcp"]
     }
   }
 }
