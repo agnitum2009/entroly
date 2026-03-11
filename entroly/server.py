@@ -123,7 +123,7 @@ class EntrolyEngine:
             else:
                 logger.info("No persistent index found, starting fresh session")
         except Exception as e:
-            logger.warning(f"Failed to load persistent index: {e}")
+            logger.debug(f"Persistent index not available: {e}")
 
         # ── hippocampus Long-Term Memory ──
         # Cross-session memory powered by hippocampus-sharp-memory (salience-based
@@ -406,7 +406,7 @@ class EntrolyEngine:
         try:
             self._rust.persist_index(self._index_path)
         except Exception as e:
-            logger.warning(f"Failed to persist index: {e}")
+            logger.debug(f"Index persistence not available: {e}")
         return self._checkpoint_mgr.save(
             fragments=[],
             dedup_fingerprints={},

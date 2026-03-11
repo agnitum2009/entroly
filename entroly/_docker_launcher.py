@@ -34,15 +34,16 @@ def _docker_available() -> bool:
         if result.returncode == 0:
             return True
 
-        # Fallback: Docker installed but daemon needs sudo?
-        # Try 'docker version' which shows client info even without daemon.
+        # Fallback: Docker installed but daemon needs permissions?
+        # 'docker version' may exit non-zero but still print client version.
         result = subprocess.run(
             ["docker", "version", "--format", "{{.Client.Version}}"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
             check=False,
         )
-        return result.returncode == 0
+        # If we got any version string in stdout, Docker client is present
+        return bool(result.stdout.strip())
     except FileNotFoundError:
         return False
 
