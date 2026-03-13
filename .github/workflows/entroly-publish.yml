@@ -10,85 +10,8 @@ permissions:
   id-token: write  # Required for PyPI trusted publishing (OIDC)
 
 jobs:
-  # ─── Build entroly-core Rust wheels on 3 platforms ───
-  build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Build wheels
-        run: maturin build --release -o dist/
-        working-directory: entroly-core
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.os }}
-          path: entroly-core/dist/*.whl
-
-  # ─── Build entroly-core source distribution ───
-  build-sdist:
-    name: Build source distribution
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install maturin
-        run: pip install maturin
-
-      - name: Build sdist
-        run: maturin sdist -o dist/
-        working-directory: entroly-core
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: entroly-core/dist/*.tar.gz
-
-  # ─── Publish entroly-core wheels to PyPI ───
-  publish-core:
-    name: Publish entroly-core to PyPI
-    needs: [build-wheels, build-sdist]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist/
-          merge-multiple: true
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
-
-  # ─── Publish entroly Python wrapper to PyPI ───
+  # ─── Publish entroly Python wrapper to PyPI ───────────────────────────────
+  # The Rust engine (entroly-core) runs inside Docker — no native wheel needed.
   publish-wrapper:
     name: Publish entroly wrapper to PyPI
     runs-on: ubuntu-latest
