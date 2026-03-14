@@ -72,6 +72,7 @@ class ProxyConfig:
     enable_temperature_calibration: bool = True
     enable_trajectory_convergence: bool = True
     enable_prompt_directives: bool = True
+    enable_hierarchical_compression: bool = True
 
     # EGTC v2 coefficients (overridable by autotune daemon via tuning_config.json)
     fisher_scale: float = 0.55

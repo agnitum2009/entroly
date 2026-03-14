@@ -40,6 +40,7 @@ from .proxy_transform import (
     extract_model,
     extract_user_message,
     format_context_block,
+    format_hierarchical_context,
     inject_context_anthropic,
     inject_context_openai,
 )
@@ -152,6 +153,23 @@ class PromptCompilerProxy:
         model = extract_model(body)
         token_budget = compute_token_budget(model, self.config)
 
+        # ── Hierarchical Compression path (ECC) ──
+        # Try 3-level hierarchical compression first if enabled.
+        # Falls back to flat optimize_context if hierarchical_compress
+        # is not available (e.g., older Rust engine version).
+        hcc_result = None
+        if self.config.enable_hierarchical_compression:
+            try:
+                hcc_result = self.engine._rust.hierarchical_compress(
+                    token_budget, user_message
+                )
+                if hcc_result.get("status") == "empty":
+                    hcc_result = None  # Fall through to flat path
+            except (AttributeError, Exception) as e:
+                logger.debug(f"HCC unavailable, falling back to flat: {e}")
+                hcc_result = None
+
+        # ── Flat optimization path (original) ──
         # optimize_context already does:
         #   1. Query refinement (py_analyze_query + py_refine_heuristic)
         #   2. LTM recall (cross-session memories)
@@ -225,15 +243,30 @@ class PromptCompilerProxy:
                 user_message, top_k=3, min_retention=0.3
             )
 
-        # Format the context block (with APA: task-aware preamble + dedup)
+        # ── Format context block ──
         apa_kwargs: Dict[str, Any] = {}
         if self.config.enable_prompt_directives:
             apa_kwargs["task_type"] = task_type
             apa_kwargs["vagueness"] = vagueness
-        context_text = format_context_block(
-            selected, security_issues, ltm_memories, refinement_info,
-            **apa_kwargs,
-        )
+
+        if hcc_result is not None:
+            # Hierarchical: 3-level compression
+            context_text = format_hierarchical_context(
+                hcc_result, security_issues, ltm_memories, refinement_info,
+                **apa_kwargs,
+            )
+            logger.info(
+                f"HCC: L1={hcc_result.get('level1_tokens', 0)}t, "
+                f"L2={hcc_result.get('level2_tokens', 0)}t, "
+                f"L3={hcc_result.get('level3_tokens', 0)}t, "
+                f"coverage={hcc_result.get('coverage', {})}"
+            )
+        else:
+            # Flat: original format_context_block
+            context_text = format_context_block(
+                selected, security_issues, ltm_memories, refinement_info,
+                **apa_kwargs,
+            )
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
         if selected:

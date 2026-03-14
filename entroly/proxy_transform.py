@@ -250,6 +250,102 @@ def format_context_block(
     return "\n".join(parts)
 
 
+def format_hierarchical_context(
+    hcc_result: Dict[str, Any],
+    security_issues: List[str],
+    ltm_memories: List[Dict[str, Any]],
+    refinement_info: Optional[Dict[str, Any]],
+    *,
+    task_type: str = "Unknown",
+    vagueness: float = 0.0,
+) -> str:
+    """Format hierarchical compression result into context for LLM injection.
+
+    Three-level structure:
+      L1: Skeleton map — one line per file, entire codebase visible
+      L2: Dep-graph cluster — expanded skeletons for query-connected files
+      L3: Full content — knapsack-optimal fragments at full resolution
+
+    The LLM sees the ENTIRE codebase structure (L1), detailed structure
+    of relevant neighborhood (L2), and full code where it matters (L3).
+    """
+    if hcc_result.get("status") == "empty":
+        return ""
+
+    parts: List[str] = []
+    parts.append("--- Relevant Code Context (auto-selected by entroly) ---")
+    parts.append("")
+
+    # Task-aware preamble (conditional — only when signals warrant it)
+    preamble = _build_preamble(task_type, vagueness, len(security_issues))
+    if preamble:
+        parts.append(preamble)
+        parts.append("")
+
+    # Refinement info
+    if refinement_info:
+        parts.append(
+            f'[Query refined: "{refinement_info.get("original", "")}" '
+            f'→ "{refinement_info.get("refined", "")}" '
+            f'(vagueness: {refinement_info.get("vagueness", 0):.2f})]'
+        )
+        parts.append("")
+
+    # ── Level 1: Skeleton Map (entire codebase overview) ──
+    l1_map = hcc_result.get("level1_map", "")
+    if l1_map:
+        coverage = hcc_result.get("coverage", {})
+        l1_files = coverage.get("level1_files", 0) if isinstance(coverage, dict) else 0
+        parts.append(f"## Codebase Overview ({l1_files} files)")
+        parts.append("```")
+        parts.append(l1_map.rstrip())
+        parts.append("```")
+        parts.append("")
+
+    # ── Level 2: Dep-Graph Cluster (structural context) ──
+    l2_cluster = hcc_result.get("level2_cluster", "")
+    if l2_cluster:
+        coverage = hcc_result.get("coverage", {})
+        l2_files = coverage.get("level2_cluster_files", 0) if isinstance(coverage, dict) else 0
+        parts.append(f"## Related Code Structure ({l2_files} connected files)")
+        parts.append(l2_cluster.rstrip())
+        parts.append("")
+
+    # ── Level 3: Full Content (knapsack-optimal) ──
+    l3_frags = hcc_result.get("level3_fragments", [])
+    if l3_frags:
+        parts.append(f"## Full Code ({len(l3_frags)} fragments)")
+        for frag in l3_frags:
+            source = frag.get("source", "unknown")
+            tokens = frag.get("token_count", 0)
+            content = frag.get("content", frag.get("preview", ""))
+            lang = _infer_language(source)
+            parts.append(f"### {source} ({tokens} tokens)")
+            parts.append(f"```{lang}")
+            parts.append(content.rstrip())
+            parts.append("```")
+            parts.append("")
+
+    # Long-term memories (cross-session)
+    if ltm_memories:
+        parts.append("## Cross-Session Memory")
+        for mem in ltm_memories:
+            retention = mem.get("retention", 0)
+            content = mem.get("content", "")
+            parts.append(f"- [retention: {retention:.2f}] {content[:200]}")
+        parts.append("")
+
+    # Security warnings
+    if security_issues:
+        parts.append("## Security Warnings")
+        for issue in security_issues:
+            parts.append(f"- {issue}")
+        parts.append("")
+
+    parts.append("--- End Context ---")
+    return "\n".join(parts)
+
+
 def inject_context_openai(
     body: Dict[str, Any], context_text: str
 ) -> Dict[str, Any]:
