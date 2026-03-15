@@ -123,14 +123,14 @@ Three-level hierarchical codebase compression. The LLM sees **everything** at va
 
 ```mermaid
 graph TD
-    Query["User Query"] --> L1["L1: Skeleton Map (5%)"]
-    Query --> L2["L2: Dependency Cluster (25%)"]
-    Query --> L3["L3: Full Fragments (70%)"]
-    
-    L1 --> C1["Signatures of ALL 1000+ files"]
+    Query["User Query"] --> L1["L1: Skeleton Map · 5%"]
+    Query --> L2["L2: Dependency Cluster · 25%"]
+    Query --> L3["L3: Full Fragments · 70%"]
+
+    L1 --> C1["Signatures of all files"]
     L2 --> C2["Expanded skeletons of related modules"]
     L3 --> C3["Submodular diversified full code"]
-    
+
     C1 --> Context["Optimal Context Window"]
     C2 --> Context
     C3 --> Context
