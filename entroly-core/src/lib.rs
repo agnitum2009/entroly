@@ -896,6 +896,87 @@ impl EntrolyEngine {
         self.context_scorer.w_entropy = self.w_entropy;
     }
 
+    /// Persist the full fragment index to disk as compressed JSON.
+    /// Called automatically after each ingest batch so sessions resume
+    /// without re-indexing the whole codebase.
+    pub fn persist_index(&self, path: &str) -> PyResult<()> {
+        use std::io::Write;
+        #[derive(Serialize)]
+        struct IndexSnapshot<'a> {
+            fragments: &'a HashMap<String, ContextFragment>,
+            fragment_slot_ids: &'a Vec<String>,
+            w_recency: f64,
+            w_frequency: f64,
+            w_semantic: f64,
+            w_entropy: f64,
+            total_tokens_saved: u64,
+            total_optimizations: u64,
+            total_fragments_ingested: u64,
+            total_duplicates_caught: u64,
+        }
+        let snapshot = IndexSnapshot {
+            fragments: &self.fragments,
+            fragment_slot_ids: &self.fragment_slot_ids,
+            w_recency: self.w_recency,
+            w_frequency: self.w_frequency,
+            w_semantic: self.w_semantic,
+            w_entropy: self.w_entropy,
+            total_tokens_saved: self.total_tokens_saved,
+            total_optimizations: self.total_optimizations,
+            total_fragments_ingested: self.total_fragments_ingested,
+            total_duplicates_caught: self.total_duplicates_caught,
+        };
+        let json = serde_json::to_vec(&snapshot)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        // Write atomically via temp file
+        let tmp = format!("{}.tmp", path);
+        let mut f = std::fs::File::create(&tmp)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        f.write_all(&json)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        std::fs::rename(&tmp, path)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Load a previously persisted index from disk.
+    /// Returns the number of fragments restored.
+    pub fn load_index(&mut self, path: &str) -> PyResult<usize> {
+        #[derive(Deserialize)]
+        struct IndexSnapshot {
+            fragments: HashMap<String, ContextFragment>,
+            fragment_slot_ids: Vec<String>,
+            w_recency: f64,
+            w_frequency: f64,
+            w_semantic: f64,
+            w_entropy: f64,
+            total_tokens_saved: u64,
+            total_optimizations: u64,
+            total_fragments_ingested: u64,
+            total_duplicates_caught: u64,
+        }
+        let data = std::fs::read(path)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        let snapshot: IndexSnapshot = serde_json::from_slice(&data)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let n = snapshot.fragments.len();
+        self.fragments = snapshot.fragments;
+        self.fragment_slot_ids = snapshot.fragment_slot_ids;
+        self.w_recency = snapshot.w_recency;
+        self.w_frequency = snapshot.w_frequency;
+        self.w_semantic = snapshot.w_semantic;
+        self.w_entropy = snapshot.w_entropy;
+        self.total_tokens_saved = snapshot.total_tokens_saved;
+        self.total_optimizations = snapshot.total_optimizations;
+        self.total_fragments_ingested = snapshot.total_fragments_ingested;
+        self.total_duplicates_caught = snapshot.total_duplicates_caught;
+        // Rebuild dedup index from loaded fragments
+        for frag in self.fragments.values() {
+            self.dedup_index.insert(&frag.fragment_id, &frag.content);
+        }
+        Ok(n)
+    }
+
     /// Record that the selected fragments led to a successful output.
     /// This feeds the reinforcement learning loop.
     pub fn record_success(&mut self, fragment_ids: Vec<String>) {

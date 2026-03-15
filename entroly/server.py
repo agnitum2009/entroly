@@ -461,7 +461,7 @@ class EntrolyEngine:
             try:
                 self._rust.persist_index(self._index_path)
             except Exception as e:
-                logger.warning(f"Failed to persist index: {e}")
+                logger.debug(f"Failed to persist index: {e}")
             return self._checkpoint_mgr.save(
                 fragments=[],
                 dedup_fingerprints={},
