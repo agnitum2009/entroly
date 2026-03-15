@@ -36,28 +36,12 @@ RUN pip install --no-cache-dir /tmp/wheels/*.whl \
     "mcp>=1.0.0" "httpx>=0.27" "starlette>=0.37" "uvicorn>=0.30" \
     && rm -rf /tmp/wheels
 
-# Copy entroly Python package (all modules)
-COPY entroly/__init__.py \
-     entroly/server.py \
-     entroly/cli.py \
-     entroly/config.py \
-     entroly/checkpoint.py \
-     entroly/prefetch.py \
-     entroly/query_refiner.py \
-     entroly/provenance.py \
-     entroly/multimodal.py \
-     entroly/adaptive_pruner.py \
-     entroly/auto_index.py \
-     entroly/autotune.py \
-     entroly/benchmark_harness.py \
-     entroly/_docker_launcher.py \
-     entroly/long_term_memory.py \
-     entroly/proxy.py \
-     entroly/proxy_config.py \
-     entroly/proxy_transform.py \
-     /app/entroly/
+# Copy entroly Python package (all modules — glob avoids missing new files)
+COPY entroly/ /app/entroly/
 
-COPY entroly/tuning_config.json /app/entroly/
+# Copy bench directory (tuning_config.json + benchmark cases for autotune)
+COPY bench/ /app/bench/
+
 COPY pyproject.toml /app/
 COPY README.md /app/
 
