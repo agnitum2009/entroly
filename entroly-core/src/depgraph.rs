@@ -166,13 +166,18 @@ impl DepGraph {
                 let path = trimmed.trim_start_matches("use ").trim_end_matches(';');
                 // Handle `use foo::{A, B}` brace imports
                 if let Some(brace_start) = path.find('{') {
-                    let inner = &path[brace_start+1..path.len()-path.chars().rev().position(|c| c == '}').unwrap_or(0)-1];
-                    for name in inner.split(',') {
-                        let clean = name.trim().split(" as ").next().unwrap_or("").trim();
-                        if !clean.is_empty() {
-                            targets.insert(clean.to_string());
+                    if let Some(brace_end) = path.find('}') {
+                        if brace_start + 1 < brace_end {
+                            let inner = &path[brace_start+1..brace_end];
+                            for name in inner.split(',') {
+                                let clean = name.trim().split(" as ").next().unwrap_or("").trim();
+                                if !clean.is_empty() {
+                                    targets.insert(clean.to_string());
+                                }
+                            }
                         }
                     }
+                    // No closing brace (multi-line use) — skip safely
                 } else {
                     // use foo::Bar; → import "Bar"
                     let last = path.rsplit("::").next().unwrap_or(path).trim();

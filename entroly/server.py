@@ -1437,7 +1437,12 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
 def main():
     """Entry point for the entroly MCP server."""
     engine_type = "Rust" if _RUST_AVAILABLE else "Python"
-    logger.info(f"Starting Entroly MCP server v0.2.0 ({engine_type} engine)")
+    try:
+        from importlib.metadata import version as _pkg_version
+        _version = _pkg_version("entroly")
+    except Exception:
+        _version = "0.4.4"
+    logger.info(f"Starting Entroly MCP server v{_version} ({engine_type} engine)")
     mcp, engine = create_mcp_server()
 
     # Auto-index the project on startup (zero config)
