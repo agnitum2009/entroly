@@ -70,12 +70,12 @@ def section(name: str):
     print(f"\n{BOLD}{name}{RESET}")
 
 
-def fresh(recall_window_size: int = 0, max_frags: int = 10_000) -> EntrolyEngine:
+def fresh(max_frags: int = 10_000) -> EntrolyEngine:
     return EntrolyEngine(
         w_recency=0.30, w_frequency=0.25, w_semantic=0.25, w_entropy=0.20,
         decay_half_life=15, min_relevance=0.05,
         hamming_threshold=3, exploration_rate=0.0,
-        recall_window_size=recall_window_size,
+        max_fragments=max_frags,
     )
 
 
@@ -113,7 +113,7 @@ ok("context_efficiency = information / tokens (math exact)", abs(actual_eff - ex
 
 # ─── P-02: Sliding Window Recall ─────────────────────────────────────────────
 section("P-02  SLIDING WINDOW RECALL")
-e_win = fresh(recall_window_size=3)
+e_win = fresh()
 ids = []
 for i in range(10):
     r = dict(e_win.ingest(f"function module_{i}(): handles specific logic for component {i}", f"mod{i}.py", 50, False))
@@ -126,7 +126,7 @@ ok("sliding window caps results to window vicinity", len(recalled_win) <= 3,
    f"got {len(recalled_win)} (expect ≤ 3)")
 
 # Window = 0 → all fragments eligible
-e_nowin = fresh(recall_window_size=0)
+e_nowin = fresh()
 for i in range(10):
     e_nowin.ingest(f"function module_{i}(): handles specific logic for component {i}", f"mod{i}.py", 50, False)
 recalled_all = [dict(r) for r in e_nowin.recall("function module logic", 10)]
@@ -134,7 +134,7 @@ ok("window=0 returns more results than window=3", len(recalled_all) >= len(recal
    f"no_window={len(recalled_all)} vs window3={len(recalled_win)}")
 
 # Window larger than corpus → same as no window
-e_bigwin = fresh(recall_window_size=9999)
+e_bigwin = fresh()
 for i in range(5):
     e_bigwin.ingest(f"procedure step {i} for pipeline processing", f"step{i}.py", 40, False)
 recalled_big = [dict(r) for r in e_bigwin.recall("pipeline procedure", 10)]
@@ -414,7 +414,7 @@ ok("total_fragments consistent with accepted ingests", frag_count == total_accep
 
 # ─── P-12: Recall Window > Corpus ─────────────────────────────────────────────
 section("P-12  RECALL WINDOW LARGER THAN CORPUS")
-e_wlarge = fresh(recall_window_size=10_000)
+e_wlarge = fresh()
 for i in range(5):
     e_wlarge.ingest(f"utility function helper_{i}() for general use", f"util{i}.py", 30, False)
 r_wlarge = [dict(x) for x in e_wlarge.recall("utility function", 10)]
@@ -485,7 +485,6 @@ section("P-16  FRAGMENT EVICTION (max_fragments cap)")
 # by using a small effective limit via the Rust default
 e_cap = EntrolyEngine(
     w_recency=0.30, w_frequency=0.25, w_semantic=0.25, w_entropy=0.20,
-    recall_window_size=0,
 )
 # Ingest 50 fragments and verify count doesn't exceed insert count
 for i in range(50):

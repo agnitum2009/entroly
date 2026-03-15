@@ -31,6 +31,22 @@
     "beta": 0.95,
     "initial_residual_lambda": 0.1
   },
+  "ios": {
+    "skeleton_info_factor": 0.70,
+    "reference_info_factor": 0.15,
+    "diversity_floor": 0.10,
+    "_comment": "MRK info retention factors and SDS diversity floor. Tunable by autotune."
+  },
+  "ecdb": {
+    "min_budget": 500,
+    "max_fraction": 0.30,
+    "sigmoid_steepness": 3.0,
+    "sigmoid_base": 0.5,
+    "sigmoid_range": 1.5,
+    "codebase_divisor": 200.0,
+    "codebase_cap": 2.0,
+    "_comment": "Entropy-Calibrated Dynamic Budget parameters. All tunable by autotune."
+  },
   "egtc": {
     "alpha": 1.6,
     "gamma": 1.2,
