@@ -187,6 +187,7 @@ impl PrismOptimizer {
     }
 
     /// Return current eigenvalues of the gradient covariance matrix.
+    #[allow(dead_code)]
     pub fn eigenvalues(&self) -> [f64; 4] {
         let (_, eigenvalues) = self.covariance.jacobi_eigendecomposition();
         eigenvalues
