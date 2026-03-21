@@ -694,10 +694,34 @@ impl EntrolyEngine {
                 explored_ids: explored_ids.clone(),
             });
 
+            // ── Compute context efficiency ──
+            // context_efficiency = sum(entropy_i * actual_tokens_i) / total_tokens
+            // Uses resolution-aware token counts to match actual context window.
+            let context_efficiency = if final_tokens > 0 {
+                let weighted_entropy: f64 = final_indices.iter()
+                    .map(|&i| frags[i].entropy_score * frags[i].token_count as f64)
+                    .sum::<f64>()
+                    + skeleton_indices.iter()
+                        .map(|&i| {
+                            let actual_tc = match ios_resolutions.get(&i) {
+                                Some(&Resolution::Reference) => {
+                                    (frags[i].source.len() as u32 / 4).clamp(3, 10)
+                                }
+                                _ => frags[i].skeleton_token_count.unwrap_or(frags[i].token_count),
+                            };
+                            frags[i].entropy_score * actual_tc as f64
+                        })
+                        .sum::<f64>();
+                weighted_entropy / final_tokens as f64
+            } else {
+                0.0
+            };
+
             // ── Build Python result ──
             let py_result = PyDict::new(py);
             py_result.set_item("method", selection_method)?;
             py_result.set_item("total_tokens", final_tokens)?;
+            py_result.set_item("context_efficiency", (context_efficiency * 10000.0).round() / 10000.0)?;
             // Compute total relevance from selected fragments
             let total_rel: f64 = final_indices.iter().chain(skeleton_indices.iter())
                 .map(|&i| {
