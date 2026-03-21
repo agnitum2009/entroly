@@ -22,6 +22,9 @@
 
 ## Quick Start (60 seconds)
 
+<details open>
+<summary><b>🐧 Linux / 🍎 macOS (Terminal)</b></summary>
+
 ```bash
 # Install
 pip install entroly
@@ -38,10 +41,46 @@ entroly status
 # See live metrics dashboard
 entroly dashboard
 ```
+</details>
+
+<details>
+<summary><b>🪟 Windows (PowerShell / CMD)</b></summary>
+
+```powershell
+# Install
+pip install entroly
+
+# Option A: Add to your AI tool (auto-detects Cursor, VS Code, Claude Desktop)
+entroly init
+
+# Option B: Invisible proxy mode (works with ANY AI tool)
+entroly proxy --quality balanced
+
+# Check it's working
+entroly status
+
+# See live metrics dashboard
+entroly dashboard
+```
+
+> **Note:** On Windows, Entroly runs natively — no WSL required. Docker Desktop is optional.
+> If you see `pip not found`, use `python -m pip install entroly` instead.
+</details>
+
+<details>
+<summary><b>🐳 Docker (any platform)</b></summary>
+
+```bash
+docker pull ghcr.io/juyterman1000/entroly:latest
+docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman1000/entroly:latest
+```
+
+Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton).
+</details>
 
 **Quality presets:** `--quality speed` | `fast` | `balanced` | `quality` | `max` (or any float 0.0-1.0)
 
-**Troubleshooting:** See the [Troubleshooting](#troubleshooting) section below.
+**Troubleshooting:** Run `entroly doctor` or see the [Troubleshooting](#troubleshooting) section below.
 
 ---
 
@@ -277,6 +316,38 @@ Automatically derives the optimal LLM sampling temperature from context informat
 
 ---
 
+## Installation
+
+### Requirements
+
+| | Linux | macOS | Windows |
+|--|-------|-------|---------|
+| **Python** | 3.10+ | 3.10+ | 3.10+ |
+| **Rust engine** | Pre-built wheel | Pre-built wheel | Pre-built wheel |
+| **Docker** | Optional (native works) | Optional (Docker Desktop) | Optional (Docker Desktop) |
+| **WSL** | N/A | N/A | **Not required** |
+
+### Install from PyPI
+
+```bash
+# Core (MCP server, Python engine fallback)
+pip install entroly
+
+# With proxy mode (invisible prompt compiler)
+pip install entroly[proxy]
+
+# With native Rust engine (50-100× faster)
+pip install entroly[native]
+
+# Everything
+pip install entroly[full]
+```
+
+> **Windows users:** If `pip` is not on your PATH, use `python -m pip install entroly`.
+> **macOS users:** On Apple Silicon (M1/M2/M3/M4), the pre-built `arm64` wheel installs automatically.
+
+---
+
 ## Setup
 
 ### Cursor
@@ -297,11 +368,34 @@ Add to `.cursor/mcp.json`:
 claude mcp add entroly -- entroly
 ```
 
-### Prompt Compiler Proxy (any IDE)
+### VS Code / Windsurf
+
+Run `entroly init` — it auto-detects your IDE and generates the correct MCP config.
+
+### Prompt Compiler Proxy (works with ANY AI tool)
+
+The proxy is an invisible HTTP layer that intercepts every LLM request, optimizes context with the full pipeline (ECC + IOS + EGTC + APA + SAST), and forwards it transparently. < 10ms overhead.
+
+<details open>
+<summary><b>🐧 Linux / 🍎 macOS</b></summary>
+
 ```bash
 pip install entroly[proxy]
-entroly proxy
+entroly proxy --quality balanced
 ```
+</details>
+
+<details>
+<summary><b>🪟 Windows (PowerShell)</b></summary>
+
+```powershell
+pip install entroly[proxy]
+entroly proxy --quality balanced
+```
+
+> On Windows, the proxy binds to `127.0.0.1:9377` by default.
+> No admin rights required. Firewall prompt may appear for network access.
+</details>
 
 Optional flags:
 ```bash
@@ -310,14 +404,28 @@ entroly proxy --port 9377         # Custom port
 entroly proxy --force             # Force re-index codebase
 ```
 
-Every LLM request is intercepted, optimized with the full pipeline (ECC + IOS + EGTC + APA + SAST), and forwarded transparently. < 10ms overhead. Auto-indexes your codebase on startup.
+Then point your AI tool's API base URL to `http://localhost:9377/v1` — done. Auto-indexes your codebase on startup.
 
 ### Docker (cross-platform, build-once-run-everywhere)
+
 ```bash
+# All platforms
 docker pull ghcr.io/juyterman1000/entroly:latest
-docker run --rm -p 9377:9377 ghcr.io/juyterman1000/entroly:latest
+docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman1000/entroly:latest
 ```
+
 Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton).
+
+> **Docker Desktop (macOS / Windows):** Uses port mapping (`-p 9377:9377`) which works on all platforms.
+> **Linux:** Optionally use `--network=host` for lower latency.
+
+### Docker Compose
+
+```bash
+docker compose up -d
+```
+
+Includes healthcheck, persistent volume for learned state, and auto-restart.
 
 ### Live Intelligence Dashboard
 
@@ -457,43 +565,139 @@ EntrolyConfig(
 
 | Command | Purpose |
 |---------|--------|
+| `entroly init` | Auto-detect project type + AI tool, generate MCP config |
 | `entroly serve` | Start MCP server (default — used by Cursor, Claude Code) |
 | `entroly proxy` | Start invisible prompt compiler proxy on :9377 |
 | `entroly dashboard` | Launch value dashboard on :9378 |
-| `entroly init` | Auto-detect project type and configure IDE integration |
-| `entroly health` | Run code health analysis (clones, dead symbols, god files) |
-| `entroly autotune` | Run autonomous hyperparameter optimization |
+| `entroly demo` | 🆕 Run before/after comparison showing token savings |
+| `entroly doctor` | 🆕 7-point diagnostic check (Python, Rust engine, config, proxy, index, weights, Docker) |
+| `entroly digest` | 🆕 Weekly summary of optimization value delivered |
+| `entroly role` | 🆕 Apply role-based weight presets (`frontend` / `backend` / `sre` / `data` / `fullstack`) |
+| `entroly migrate` | 🆕 Auto-migrate config/index/checkpoints to current version |
+| `entroly health` | Run code health analysis — A-F grade (clones, dead symbols, god files, arch violations) |
+| `entroly autotune` | Run autonomous hyperparameter optimization (mutate → evaluate → keep) |
 | `entroly benchmark` | Run competitive benchmark (Entroly vs Raw vs Top-K) |
 | `entroly status` | Check if proxy/dashboard is running |
-| `entroly config` | Show current configuration |
+| `entroly config` | Show current configuration with all feature flags |
+| `entroly clean` | Clear cached state (checkpoints, index, pull cache) |
 | `entroly completions` | Generate shell completion scripts (bash/zsh/fish) |
 
 ## Part of the Ebbiforge Ecosystem
 
 Entroly integrates with [hippocampus-sharp-memory](https://pypi.org/project/hippocampus-sharp-memory/) for persistent cross-session memory and [Ebbiforge](https://pypi.org/project/ebbiforge/) for TF embeddings and RL weight learning. Both are optional.
 
+## Production Features
+
+### Reliability & Self-Healing
+
+| Feature | What it does |
+|---------|--------------|
+| **Connection Recovery** | Auto-reconnects dropped `httpx` connections — no manual restart |
+| **Massive File Shield** | Hard ceiling (500 KB) prevents OOM on giant logs, vendor files, minified JS |
+| **Binary File Detection** | 40+ binary extensions auto-skipped (images, audio, video, archives, fonts, databases) + null-byte header check |
+| **Schema Migration** | `entroly migrate` upgrades config, checkpoints, and index format between versions |
+| **Checkpoint & Resume** | Auto-saves state every N tool calls · gzipped JSON · crash recovery in <100ms |
+| **Distributed Locking** | Cross-platform file locking (`fcntl` on POSIX, `msvcrt` on Windows) for multi-instance safety |
+
+### Developer Experience
+
+| Feature | What it does |
+|---------|--------------|
+| **One-Click Demo** | `entroly demo` — indexes your project and shows before/after token savings with exact percentages |
+| **Self-Diagnostics** | `entroly doctor` — 7 checks (Python version, Rust engine, config validity, proxy reachability, index freshness, weight drift, Docker) |
+| **Role Presets** | `entroly role apply backend` — pre-tuned weights for frontend, backend, SRE, data, and fullstack roles |
+| **Weekly Digest** | `entroly digest` — summary of optimization value delivered this week |
+| **Fragment Feedback** | `POST /feedback` — thumbs-up/down on individual fragments, builds Wilson Score confidence |
+| **Explain Decisions** | `GET /explain` — per-fragment selection reasoning: entropy level, query relevance, variant type, file indicators |
+
+---
+
 ## Troubleshooting
 
-**Docker not running:**
-```
-entroly proxy  # No Docker needed — runs natively
-# Or install the native Rust engine:
-pip install entroly[native]
+> **First step:** Run `entroly doctor` — it checks everything automatically.
+
+<details>
+<summary><b>🐧 Linux</b></summary>
+
+**Docker not needed:**
+```bash
+entroly proxy  # Runs natively — no Docker required
+pip install entroly[native]  # Install Rust engine for 50-100× speedup
 ```
 
-**Port 9377 already in use:**
+**Port conflict:**
 ```bash
 entroly proxy --port 9378
-# or set ENTROLY_PROXY_PORT=9378
+# or: export ENTROLY_PROXY_PORT=9378
+```
+</details>
+
+<details>
+<summary><b>🍎 macOS</b></summary>
+
+**Apple Silicon (M1/M2/M3/M4):**
+```bash
+pip install entroly  # arm64 wheel installs automatically
 ```
 
-**Rust wheel not available for your platform:**
+**Docker Desktop networking:**
+Docker Desktop on macOS doesn't support `--network=host`. Use port mapping (the default):
 ```bash
-ENTROLY_NO_DOCKER=1 entroly serve  # Falls back to Python engine (slower but functional)
+docker run --rm -p 9377:9377 -p 9378:9378 ghcr.io/juyterman1000/entroly:latest
 ```
+
+**Homebrew Python:**
+If `pip install` fails with "externally-managed-environment":
+```bash
+python3 -m venv ~/.venvs/entroly
+source ~/.venvs/entroly/bin/activate
+pip install entroly[full]
+```
+</details>
+
+<details>
+<summary><b>🪟 Windows</b></summary>
+
+**pip not found:**
+```powershell
+python -m pip install entroly
+```
+
+**Rust wheel not available:**
+Entroly falls back to a pure Python engine automatically. For the Rust speedup:
+```powershell
+pip install entroly[native]
+# If no pre-built wheel exists, install Rust toolchain first:
+# https://rustup.rs/ → then: pip install entroly[native]
+```
+
+**Permission errors:**
+- No admin rights required — Entroly writes only to `%APPDATA%\entroly\` and `~\.entroly\`
+- Windows Firewall may prompt when the proxy binds to `127.0.0.1:9377` — allow it
+
+**Claude Desktop config location:**
+```
+%APPDATA%\Claude\claude_desktop_config.json
+```
+`entroly init` detects this automatically.
+
+**Docker Desktop networking:**
+Same as macOS — use port mapping (the default):
+```powershell
+docker run --rm -p 9377:9377 -p 9378:9378 ghcr.io/juyterman1000/entroly:latest
+```
+</details>
+
+<details>
+<summary><b>General Troubleshooting</b></summary>
 
 **Proxy seems slow on first request:**
 This is normal — the first request warms up HTTP connections and the Rust pipeline. Subsequent requests add <10ms.
+
+**Rust engine not loading:**
+```bash
+ENTROLY_NO_DOCKER=1 entroly serve  # Falls back to Python engine (slower but functional)
+```
 
 **Shell completions:**
 ```bash
@@ -504,6 +708,13 @@ eval "$(entroly completions zsh)"
 # Fish
 entroly completions fish > ~/.config/fish/completions/entroly.fish
 ```
+
+```powershell
+# PowerShell — no built-in completion yet, but CLI --help works for all commands
+entroly --help
+entroly proxy --help
+```
+</details>
 
 **Environment variables:**
 | Variable | Default | Description |
