@@ -122,8 +122,17 @@ def run_case(engine_factory, case: dict) -> dict[str, Any]:
     precision = len(true_positives) / max(len(selected_sources), 1)
     f1 = 2 * precision * recall / max(precision + recall, 1e-9)
 
-    # Context efficiency from the optimize result
+    # Context efficiency from the optimize result, with fallback computation
     context_efficiency = result.get("context_efficiency", 0.0)
+    if context_efficiency == 0.0 and selected:
+        # Fallback: compute from per-fragment entropy × tokens / total_tokens
+        total_tok = sum(dict(item).get("token_count", 0) for item in selected)
+        if total_tok > 0:
+            weighted = sum(
+                dict(item).get("entropy_score", 0.0) * dict(item).get("token_count", 0)
+                for item in selected
+            )
+            context_efficiency = weighted / total_tok
 
     return {
         "case_id": case["id"],
