@@ -51,6 +51,7 @@ pub enum AnomalyType {
 }
 
 impl AnomalyType {
+    #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self {
             AnomalyType::Spike => "ENTROPY_SPIKE",
@@ -92,7 +93,7 @@ pub struct AnomalyReport {
 fn median(sorted: &[f64]) -> f64 {
     let n = sorted.len();
     if n == 0 { return 0.0; }
-    if n % 2 == 0 {
+    if n.is_multiple_of(2) {
         (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
     } else {
         sorted[n / 2]
@@ -280,7 +281,7 @@ mod tests {
     #[test]
     fn test_spike_detection() {
         // 6 fragments in same directory: 5 normal + 1 outlier high
-        let frags = vec![
+        let frags = [
             make_frag("a", "src/handlers/auth.rs", 0.50, "fn auth() { validate(); }"),
             make_frag("b", "src/handlers/user.rs", 0.48, "fn get_user() { query(); }"),
             make_frag("c", "src/handlers/item.rs", 0.52, "fn list_items() { fetch(); }"),
@@ -302,7 +303,7 @@ mod tests {
     #[test]
     fn test_drop_detection() {
         // 6 fragments: 5 high entropy + 1 outlier low
-        let frags = vec![
+        let frags = [
             make_frag("a", "lib/core/engine.rs", 0.80, "complex algorithmic code here"),
             make_frag("b", "lib/core/parser.rs", 0.78, "complex parsing logic there"),
             make_frag("c", "lib/core/scorer.rs", 0.82, "scoring with many branches"),
@@ -322,7 +323,7 @@ mod tests {
     #[test]
     fn test_small_group_skipped() {
         // Only 3 fragments in a directory — below MIN_GROUP_SIZE
-        let frags = vec![
+        let frags = [
             make_frag("a", "tiny/a.rs", 0.50, "normal"),
             make_frag("b", "tiny/b.rs", 0.50, "normal"),
             make_frag("c", "tiny/outlier.rs", 0.99, "anomalous"),
