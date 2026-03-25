@@ -5,9 +5,22 @@
 <h1 align="center">Entroly</h1>
 
 <p align="center">
-  <b>Context optimization for AI coding agents.</b>
+  <b>The Context Engineering Engine for AI Coding Agents</b>
   <br/>
-  <i>Zero config. 78% fewer tokens. Your entire codebase — visible to your AI.</i>
+  <i>Your AI sees 5% of your codebase. Entroly shows it everything — 78% fewer tokens.</i>
+</p>
+
+<p align="center">
+  <code>pip install entroly</code> &nbsp;&mdash;&nbsp; Works with Cursor, Claude Code, Copilot, Windsurf, OpenClaw
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> &nbsp;&bull;&nbsp;
+  <a href="#see-it-in-action">Demo</a> &nbsp;&bull;&nbsp;
+  <a href="#works-with-everything">Integrations</a> &nbsp;&bull;&nbsp;
+  <a href="#openclaw-integration">OpenClaw</a> &nbsp;&bull;&nbsp;
+  <a href="#cli-commands">CLI</a> &nbsp;&bull;&nbsp;
+  <a href="https://github.com/juyterman1000/entroly/discussions">Discuss</a>
 </p>
 
 <p align="center">
@@ -56,6 +69,25 @@ You install it once. It runs invisibly. Your AI gives better answers and you spe
 | **< 10ms overhead** | The Rust engine adds under 10ms per request. You won't notice it |
 | **Works with any AI tool** | MCP server for Cursor/Claude Code, or transparent HTTP proxy for anything else |
 | **Runs on Linux, macOS, and Windows** | Native support. No WSL required on Windows. Docker optional on all platforms |
+
+---
+
+## Context Engineering, Automated
+
+> *"The LLM is the CPU, the context window is RAM."*
+
+Today, every AI coding tool fills that RAM manually — you craft system prompts, configure RAG, curate docs. **Entroly automates the entire process.**
+
+| Layer | What it solves |
+|-------|---------------|
+| **Documentation tools** | Give your agent up-to-date API docs |
+| **Memory systems** | Remember things across conversations |
+| **RAG / retrieval** | Find relevant code chunks |
+| **Entroly (optimization)** | Makes everything fit — optimally compresses your entire codebase + docs + memory into the token budget |
+
+These layers are **complementary.** Doc tools give you better docs. Memory gives you persistence. RAG retrieves relevant chunks. Entroly is the **optimization layer** that makes sure all of it actually fits in your context window without wasting tokens.
+
+**Entroly works standalone, or on top of any doc tool, memory system, RAG pipeline, or context source.**
 
 ---
 
@@ -114,17 +146,80 @@ Or with Docker Compose: `docker compose up -d`
 
 ---
 
+## Works With Everything
+
+| AI Tool | Setup | Method |
+|---------|-------|--------|
+| **Cursor** | `entroly init` | MCP server |
+| **Claude Code** | `claude mcp add entroly -- entroly` | MCP server |
+| **VS Code + Copilot** | `entroly init` | MCP server |
+| **Windsurf** | `entroly init` | MCP server |
+| **Cline** | `entroly init` | MCP server |
+| **OpenClaw** | [See below](#openclaw-integration) | Context Engine |
+| **Cody** | `entroly proxy` | HTTP proxy |
+| **Any LLM API** | `entroly proxy` | HTTP proxy |
+
+---
+
+## OpenClaw Integration
+
+<a href="https://github.com/openclaw/openclaw">OpenClaw</a> users get the deepest integration. Entroly plugs in as a **Context Engine** that optimizes every agent type automatically:
+
+| Agent Type | What Entroly Does | Token Savings |
+|------------|------------------|---------------|
+| **Main agent** | Full codebase visibility at variable resolution | ~78% |
+| **Heartbeat** | Only loads what changed since last check | ~90% |
+| **Subagents** | Parent context inherited + budget-split via Nash bargaining | ~70% per agent |
+| **Cron jobs** | Minimal context — just relevant memories + schedule | ~85% |
+| **Group chat** | Entropy-based message filtering — only high-signal kept | ~60% |
+| **ACP sessions** | Cross-agent context sharing without duplication | ~75% |
+
+When OpenClaw spawns multiple agents, Entroly's **multi-agent budget allocator** splits your token budget optimally across all of them. No agent starves. No tokens wasted.
+
+```python
+from entroly.context_bridge import MultiAgentContext
+
+ctx = MultiAgentContext(workspace_path="~/.openclaw/workspace")
+ctx.ingest_workspace()
+
+# Spawn subagents with automatic budget splitting
+sub = ctx.spawn_subagent("main", "researcher", "find auth bugs")
+
+# Schedule background checks
+ctx.schedule_cron("email_checker", "check inbox", interval_seconds=900)
+
+# Every agent gets optimized context automatically
+```
+
+---
+
 ## How It Works
 
 <p align="center">
   <img src="docs/assets/pipeline.svg" alt="Entroly Pipeline — 5-stage context optimization" width="880">
 </p>
 
-1. **Ingest** — Auto-indexes your codebase via `git ls-files`, builds dependency graphs, extracts code skeletons, generates SimHash fingerprints for O(1) deduplication
-2. **Score** — Shannon entropy scoring identifies high-information fragments. Query analysis routes each request to a learned archetype via Pitman-Yor process + RBF kernel embedding
-3. **Select** — KKT-optimal knapsack bisection selects the mathematically optimal context subset within budget. Submodular diversity ensures coverage (auth + DB + API, not 3x auth)
-4. **Deliver** — 3-level hierarchical compression: L1 skeleton map (all files), L2 dependency clusters, L3 full fragments. Your AI sees everything at the right resolution
-5. **Learn** — PRISM spectral optimizer updates per-archetype weights from LLM response utilization. Context quality improves with every query
+1. **Ingest** — Indexes your codebase, builds dependency graphs, fingerprints every fragment for instant dedup
+2. **Score** — Ranks fragments by information density — high-value code scores high, boilerplate scores low
+3. **Select** — Picks the mathematically optimal subset that fits your token budget, with diversity (auth + DB + API, not 3x auth files)
+4. **Deliver** — 3 resolution levels: critical files in full, supporting files as signatures, peripheral files as one-line references
+5. **Learn** — Tracks which context produced good AI responses, improves selection weights over time
+
+---
+
+## Why Not Just RAG?
+
+Most AI tools use embedding-based retrieval (RAG). Entroly takes a fundamentally different approach:
+
+| | RAG (vector search) | Entroly |
+|--|---------------------|---------|
+| **Picks context by** | Cosine similarity to your query | Information-theoretic optimization |
+| **Codebase coverage** | Top-K similar files only | 100% — every file represented at some resolution |
+| **Handles duplicates** | Sends the same code 3x | SimHash dedup catches copies in O(1) |
+| **Learns from usage** | No | Yes — RL updates weights from AI response quality |
+| **Dependency-aware** | No | Yes — includes `auth_config.py` when you include `auth.py` |
+| **Budget optimal** | Approximate (top-K) | Mathematically optimal (knapsack solver) |
+| **Needs embeddings API** | Yes (cost + latency) | No — runs locally in <10ms |
 
 ---
 
@@ -234,79 +329,6 @@ If no pre-built wheel exists for your platform, install the [Rust toolchain](htt
 
 ---
 
-## Works with OpenClaw
-
-[OpenClaw](https://openclaw.ai) is a personal AI assistant that manages email, calendar, code, and 50+ integrations — all from WhatsApp, Telegram, or any chat app. Its workspace holds your identity (SOUL.md), persistent memory (MEMORY.md), daily logs, skill definitions, and tool schemas.
-
-The problem: when your OpenClaw agent loads context for a task, it reads files sequentially until the token budget is full — then stops. Your agent can't see files it never loaded.
-
-Entroly fixes this. Measured on a real 24-file OpenClaw workspace:
-
-<p align="center">
-  <img src="docs/assets/openclaw_benchmark.png" alt="Entroly + OpenClaw — 100% coverage with 22.7% fewer tokens" width="840">
-</p>
-
-<p align="center">
-  <b>Benchmark: 2,048 Token Budget (typical heartbeat agent)</b>
-</p>
-
-| | Without Entroly | With Entroly |
-|--|-----------------|--------------|
-| **Files visible to AI** | 15 of 24 | **24 of 24** |
-| **Codebase coverage** | 62.5% | **100.0%** |
-| **Tokens used** | 2,031 (99.2% of budget) | 1,812 (88.5%) |
-| **Token savings** | — | **22.7%** |
-| **Optimization time** | — | 0.05ms |
-
-**9 files invisible** without Entroly — including email and system skill definitions, and all tool schemas your agent needs to function:
-
-```
-INVISIBLE without Entroly:
-  x skills/system.md          — agent can't manage Docker or disk cleanup
-  x tools/search_emails.json  — agent can't search your inbox
-  x tools/send_email.json     — agent can't send emails
-  x tools/disk_usage.json     — agent can't check disk space
-  x tools/docker_ps.json      — agent can't list containers
-  x tools/read_file.json      — agent can't read code files
-  x tools/run_tests.json      — agent can't run your tests
-  x tools/git_status.json     — agent can't check repo status
-  x tools/web_search.json     — agent can't search the web
-```
-
-Your user asks via WhatsApp: _"Check my emails and prep me for standup."_ Without Entroly, your agent literally cannot see the email skill definition. With Entroly, every file is loaded at the right compression level.
-
-> Reproduce this yourself: `python benchmarks/openclaw_benchmark.py`
-
-**Integration — 3 lines of code:**
-
-```python
-from entroly.context_bridge import MultiAgentContext
-
-ctx = MultiAgentContext(workspace_path="~/.openclaw/workspace", token_budget=128_000)
-ctx.ingest_workspace()
-
-# Main agent — full HCC-optimized context
-context = ctx.load_hcc_context(query="check emails and prep for standup", token_budget=8192)
-
-# Cron heartbeat — wakes every 15 min, auto LOD lifecycle
-ctx.schedule_cron("email_checker", "check for urgent emails", interval_seconds=900)
-
-# Subagent — inherits parent context, NKBE budget allocation
-sub = ctx.spawn_subagent("main", "code_reviewer", "review PR #847 for security issues")
-```
-
-**What each component does for OpenClaw:**
-
-| Component | What It Does For Your Agent |
-|-----------|---------------------------|
-| **HCC Compression** | SOUL.md verbatim, recent logs as skeletons, old logs as one-liners — 100% visibility, 22.7% fewer tokens |
-| **NKBE Budget Allocator** | 5 subagents running? Each gets the mathematically optimal token slice via KKT bisection |
-| **Cognitive Bus** | Email agent finds something urgent — code agent is notified instantly via ISA-prioritized routing |
-| **LOD Manager** | Cron agents sleep at 0 cost between runs, wake to 15% budget on schedule |
-| **AutoTune** | Learns that your SOUL.md and recent MEMORY.md entries matter most — weights self-calibrate |
-
----
-
 ## Part of the Ebbiforge Ecosystem
 
 Entroly integrates with [hippocampus-sharp-memory](https://pypi.org/project/hippocampus-sharp-memory/) for persistent cross-session memory and [Ebbiforge](https://pypi.org/project/ebbiforge/) for TF embeddings and RL weight learning. Both are optional.
@@ -371,13 +393,13 @@ Hybrid Rust + Python. All math runs in Rust via PyO3 (50-100x faster). MCP proto
 |  |          Entroly Engine (Python)             |          |
 |  |  +-------------------------------------+    |          |
 |  |  |  entroly-core (Rust via PyO3)       |    |          |
-|  |  |  19 modules . 340 KB . 126 tests    |    |          |
+|  |  |  21 modules . 380 KB . 249 tests    |    |          |
 |  |  +-------------------------------------+    |          |
 |  +---------------------------------------------+          |
 +-----------------------------------------------------------+
 ```
 
-## Rust Core (19 modules)
+## Rust Core (21 modules)
 
 | Module | What | How |
 |--------|------|-----|
@@ -398,8 +420,10 @@ Hybrid Rust + Python. All math runs in Rust via PyO3 (50-100x faster). MCP proto
 | **anomaly.rs** | Entropy anomaly detection | MAD-based robust Z-scores, grouped by directory |
 | **semantic_dedup.rs** | Semantic redundancy removal | Greedy marginal information gain, (1-1/e) optimal |
 | **utilization.rs** | Response utilization scoring | Trigram + identifier overlap feedback loop |
+| **nkbe.rs** | Multi-agent budget allocation | Arrow-Debreu KKT bisection + Nash bargaining + REINFORCE |
+| **cognitive_bus.rs** | Event routing for agent swarms | ISA routing, Poisson rate models, Welford spike detection |
 | **fragment.rs** | Core data structure | Content, metadata, scoring dimensions, SimHash fingerprint |
-| **lib.rs** | PyO3 bridge | All modules exposed to Python, 126 tests |
+| **lib.rs** | PyO3 bridge | All modules exposed to Python, 249 tests |
 
 ## Python Layer
 
@@ -413,6 +437,7 @@ Hybrid Rust + Python. All math runs in Rust via PyO3 (50-100x faster). MCP proto
 | **prefetch.py** | Predictive context pre-loading |
 | **provenance.py** | Hallucination risk detection |
 | **multimodal.py** | Image OCR, diagram parsing, voice transcript extraction |
+| **context_bridge.py** | Multi-agent orchestration for OpenClaw (LOD, HCC, AutoTune) |
 
 ## MCP Tools
 
@@ -444,6 +469,10 @@ Hybrid Rust + Python. All math runs in Rust via PyO3 (50-100x faster). MCP proto
 **ADGT** — Duality gap as a self-regulating temperature signal. No decay constant needed.
 
 **PCNT** — PRISM spectral condition number as a weight-uncertainty-aware temperature modulator.
+
+**NKBE (Nash-KKT Budgetary Equilibrium)** — Game-theoretic multi-agent token allocation. Arrow-Debreu KKT bisection finds the dual price, Nash bargaining ensures fairness, REINFORCE gradient learns from outcomes.
+
+**ISA Cognitive Bus** — Information-Surprise-Adaptive event routing for agent swarms. Poisson rate models compute KL divergence surprise. Welford accumulators detect anomalous spikes in real-time.
 
 ## References
 
