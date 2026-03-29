@@ -76,9 +76,7 @@ impl PairKey {
 
     /// Parse from a string key.
     fn from_key_string(s: &str) -> Option<Self> {
-        let mut parts = s.splitn(2, "::");
-        let a = parts.next()?;
-        let b = parts.next()?;
+        let (a, b) = s.split_once("::")?;
         Some(PairKey::new(a, b))
     }
 }
