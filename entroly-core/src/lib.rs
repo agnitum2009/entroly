@@ -520,11 +520,23 @@ impl EntrolyEngine {
                 .fold(0.0_f64, f64::max);
             let t = self.feedback.total_observations() as f64;
             let visit_threshold = if t > 1.0 { (2.0 * t.ln()).sqrt() } else { 2.0 };
-            let should_explore = self.fragments.keys().any(|fid| {
-                let ucb = self.feedback.ucb_score(fid, alpha_0);
-                let visits = self.feedback.visit_count(fid) as f64;
-                ucb > best_exploit && visits < visit_threshold
-            });
+            let should_explore = if self.exploration_rate > 0.0 {
+                // Configured rate: coin flip with the given probability.
+                // This ensures repeated calls produce varied selections.
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                self.total_optimizations.hash(&mut hasher);
+                query.hash(&mut hasher);
+                let coin = (hasher.finish() % 10000) as f64 / 10000.0;
+                coin < self.exploration_rate
+            } else {
+                // Rate == 0: pure UCB criterion — explore only when warranted.
+                self.fragments.keys().any(|fid| {
+                    let ucb = self.feedback.ucb_score(fid, alpha_0);
+                    let visits = self.feedback.visit_count(fid) as f64;
+                    ucb > best_exploit && visits < visit_threshold
+                })
+            };
 
             // ── EGSC Cache: check for a cached optimization result ──
             // The cache key is (query, current_fragment_ids). On hit, skip the
@@ -784,14 +796,26 @@ impl EntrolyEngine {
                         }
 
                         if let Some(pos) = min_pos {
-                            // RAVEN-UCB: pick unselected fragment with highest UCB score
-                            let explore_idx = *unselected.iter()
-                                .max_by(|&&a, &&b| {
-                                    let ucb_a = self.feedback.ucb_score(&frags[a].fragment_id, alpha_0);
-                                    let ucb_b = self.feedback.ucb_score(&frags[b].fragment_id, alpha_0);
-                                    ucb_a.partial_cmp(&ucb_b).unwrap_or(std::cmp::Ordering::Equal)
-                                })
-                                .unwrap();
+                            // Pick exploration target: random when using rate-based exploration,
+                            // UCB-max when using threshold-based exploration.
+                            let explore_idx = if self.exploration_rate > 0.0 && unselected.len() > 1 {
+                                // Hash-based pseudo-random index for deterministic-but-varied selection
+                                use std::hash::{Hash, Hasher};
+                                let mut h = std::collections::hash_map::DefaultHasher::new();
+                                self.total_optimizations.hash(&mut h);
+                                pos.hash(&mut h);
+                                let pick = (h.finish() as usize) % unselected.len();
+                                unselected[pick]
+                            } else {
+                                // RAVEN-UCB: pick unselected fragment with highest UCB score
+                                *unselected.iter()
+                                    .max_by(|&&a, &&b| {
+                                        let ucb_a = self.feedback.ucb_score(&frags[a].fragment_id, alpha_0);
+                                        let ucb_b = self.feedback.ucb_score(&frags[b].fragment_id, alpha_0);
+                                        ucb_a.partial_cmp(&ucb_b).unwrap_or(std::cmp::Ordering::Equal)
+                                    })
+                                    .unwrap()
+                            };
                             let old_tokens = frags[final_indices[pos]].token_count;
                             let new_tokens = frags[explore_idx].token_count;
                             if new_tokens <= old_tokens + 100 {

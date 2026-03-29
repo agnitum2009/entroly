@@ -170,9 +170,11 @@ class TestSDSFeedbackIntegration:
         id_good = ingest_fragment(engine, "def good_function(): return optimal_result()", "good.py", 100)
         id_bad = ingest_fragment(engine, "def bad_function(): return suboptimal_result()", "bad.py", 100)
 
-        # Give feedback
-        engine.record_success([id_good])
-        engine.record_failure([id_bad])
+        # Give strong feedback signal — Wilson score needs multiple observations
+        # to meaningfully shift the posterior away from the uniform prior.
+        for _ in range(5):
+            engine.record_success([id_good])
+            engine.record_failure([id_bad])
 
         engine.advance_turn()
         result = engine.optimize(150, "function")  # Budget for only one
