@@ -1,7 +1,7 @@
 name: Publish entroly-core wheels to PyPI
 
 # Builds native Python wheels and publishes to PyPI on release tags.
-# All platforms are required: Linux (x86_64 + aarch64), macOS (arm64 + x86_64), Windows (x86_64).
+# Platforms: Linux (x86_64 + aarch64), macOS (arm64 + x86_64), Windows (x86_64).
 
 on:
   push:
@@ -31,6 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: PyO3/maturin-action@v1
         with:
           command: build
@@ -44,9 +47,12 @@ jobs:
 
   macos-arm64:
     name: macOS (arm64 — Apple Silicon)
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
       - uses: PyO3/maturin-action@v1
         with:
           command: build
@@ -59,9 +65,12 @@ jobs:
 
   macos-x86_64:
     name: macOS (x86_64 — Intel)
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
       - uses: PyO3/maturin-action@v1
         with:
           command: build
