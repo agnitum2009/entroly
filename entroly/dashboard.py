@@ -167,7 +167,28 @@ def _get_full_snapshot() -> dict:
     except Exception:
         snap["cache_intelligence"] = None
 
-    # 8. Recent proxy requests
+    try:
+        # 8. Context Resonance + Coverage + Consolidation stats
+        stats = snap.get("stats", {}) if isinstance(snap.get("stats"), dict) else {}
+        resonance = stats.get("resonance", {}) if isinstance(stats.get("resonance"), dict) else {}
+        consolidation = stats.get("consolidation", {}) if isinstance(stats.get("consolidation"), dict) else {}
+        snap["resonance"] = _safe_json({
+            "tracked_pairs": resonance.get("tracked_pairs", 0),
+            "mean_strength": resonance.get("mean_strength", 0.0),
+            "w_resonance": resonance.get("w_resonance", 0.0),
+            "resonance_energy_fraction": resonance.get("resonance_energy_fraction", 0.0),
+            "is_calibrated": resonance.get("is_calibrated", False),
+            "condition_number_5d": resonance.get("condition_number_5d", 1.0),
+        })
+        snap["consolidation"] = _safe_json({
+            "total_consolidations": consolidation.get("total_consolidations", 0),
+            "tokens_saved": consolidation.get("tokens_saved", 0),
+        })
+    except Exception:
+        snap["resonance"] = None
+        snap["consolidation"] = None
+
+    # 9. Recent proxy requests
     with _lock:
         snap["recent_requests"] = list(_request_log)
 

@@ -258,6 +258,8 @@ def _build_preamble(
     task_type: str,
     vagueness: float,
     security_count: int,
+    coverage_risk: str = "",
+    coverage: float = 1.0,
 ) -> str:
     """Build a task-aware preamble — 0-2 sentences of actionable guidance.
 
@@ -280,6 +282,14 @@ def _build_preamble(
         parts.append(
             "The query is ambiguous — ask the developer to clarify scope "
             "before making broad changes."
+        )
+
+    # Coverage warning — epistemic uncertainty signal
+    if coverage_risk == "high" or (coverage_risk == "medium" and coverage < 0.5):
+        pct = int(coverage * 100)
+        parts.append(
+            f"Context coverage is {pct}% — significant relevant code may be missing. "
+            f"Verify assumptions before making changes."
         )
 
     # Task-specific hint (only for strong task signals, not Unknown)

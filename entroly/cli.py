@@ -697,6 +697,30 @@ def cmd_status(args):
     except Exception:
         pass
 
+    # Show engine stats (resonance, coverage, consolidation) if available
+    try:
+        resp = urllib.request.urlopen(f"http://127.0.0.1:{port}/engine-stats", timeout=2)
+        engine_stats = json.loads(resp.read())
+        resonance = engine_stats.get("resonance", {})
+        consolidation = engine_stats.get("consolidation", {})
+        if resonance:
+            pairs = resonance.get("tracked_pairs", 0)
+            strength = resonance.get("mean_strength", 0.0)
+            w_res = resonance.get("w_resonance", 0.0)
+            calibrated = resonance.get("is_calibrated", False)
+            cal_str = f"{C.GREEN}calibrated{C.RESET}" if calibrated else f"{C.YELLOW}cold-start{C.RESET}"
+            print(f"\n  {C.BOLD}Context Resonance:{C.RESET}")
+            print(f"    Pairs tracked: {pairs}  |  Mean strength: {strength:.4f}  |  w_resonance: {w_res:.4f}")
+            print(f"    Status: {cal_str}")
+        if consolidation:
+            total_c = consolidation.get("total_consolidations", 0)
+            tokens_c = consolidation.get("tokens_saved", 0)
+            if total_c > 0:
+                print(f"\n  {C.BOLD}Fragment Consolidation (Maxwell's Demon):{C.RESET}")
+                print(f"    Consolidated: {total_c} fragments  |  Tokens saved: {tokens_c}")
+    except Exception:
+        pass
+
     print()
 
 

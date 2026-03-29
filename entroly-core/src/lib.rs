@@ -33,6 +33,7 @@ mod channel;
 mod nkbe;
 mod cognitive_bus;
 mod cache;
+mod resonance;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -48,8 +49,10 @@ use dedup::{simhash, hamming_distance, DedupIndex};
 use depgraph::{DepGraph, extract_identifiers};
 use guardrails::{file_criticality, has_safety_signal, TaskType, FeedbackTracker, Criticality, compute_ordering_priority};
 use prism::PrismOptimizer;
+use prism::PrismOptimizer5D;
 use query_persona::QueryPersonaManifold;
 use cache::CacheLookup;
+use resonance::ResonanceMatrix;
 
 
 /// Process-wide monotonic counter — used only to seed each engine's instance_id.
@@ -162,6 +165,36 @@ pub struct EntrolyEngine {
     /// Whether the last optimize() result came from a deterministic exploit
     /// trajectory and is therefore safe to reinforce in EGSC.
     last_cache_feedback_eligible: bool,
+
+    // ── Context Resonance: Pairwise Fragment Interaction Learning ──
+    /// Resonance matrix tracking learned pairwise fragment synergies.
+    /// R[i][j] > 0 means fragments i,j produce better LLM outputs together.
+    resonance_matrix: ResonanceMatrix,
+    /// 5D PRISM optimizer that includes the resonance dimension.
+    /// Learns w_resonance alongside w_recency/frequency/semantic/entropy.
+    /// Spectral shaping automatically dampens resonance's higher variance.
+    prism_optimizer_5d: PrismOptimizer5D,
+    /// Current resonance weight (5th dimension in the scoring model).
+    /// Controls how much pairwise interaction bonus influences selection.
+    w_resonance: f64,
+    /// Whether context resonance is enabled.
+    enable_resonance: bool,
+
+    // ── Coverage Sufficiency Estimator (Unknown Unknowns) ──
+    /// Semantic candidate count from last optimize() (N₁ for Chapman estimator).
+    last_semantic_candidates: usize,
+    /// Structural candidate count from last optimize() (N₂ for Chapman estimator).
+    last_structural_candidates: usize,
+    /// Overlap between semantic and structural candidates (m for Chapman estimator).
+    last_candidate_overlap: usize,
+
+    // ── Fragment Consolidation (Maxwell's Demon) ──
+    /// Total fragments consolidated (merged into winners) since engine creation.
+    total_consolidations: u64,
+    /// Total tokens saved by consolidation.
+    consolidation_tokens_saved: u64,
+    /// Hamming threshold for consolidation (wider than dedup: catches near-duplicates).
+    consolidation_hamming_threshold: u32,
 }
 
 /// Snapshot of the last optimization for explainability.
@@ -274,6 +307,19 @@ impl EntrolyEngine {
             last_query: String::new(),
             last_effective_budget: 0,
             last_cache_feedback_eligible: false,
+            // Context Resonance
+            resonance_matrix: ResonanceMatrix::new(),
+            prism_optimizer_5d: PrismOptimizer5D::from_4d(&PrismOptimizer::new(0.01)),
+            w_resonance: 0.0, // cold start: resonance contributes nothing until learned
+            enable_resonance: true,
+            // Coverage Estimator
+            last_semantic_candidates: 0,
+            last_structural_candidates: 0,
+            last_candidate_overlap: 0,
+            // Fragment Consolidation
+            total_consolidations: 0,
+            consolidation_tokens_saved: 0,
+            consolidation_hamming_threshold: 8, // wider than dedup (3) to catch near-dupes
         }
     }
 
@@ -313,6 +359,56 @@ impl EntrolyEngine {
         // negative feedback via Wilson scoring) are removed, freeing
         // cache slots for better candidates.
         self.egsc_cache.gc(0.15);
+
+        // ── Context Resonance: decay pairwise interaction strengths ──
+        // Half-life ~34 turns (0.98^34 ≈ 0.50). Slower than Ebbinghaus
+        // fragment decay (15 turns) because pairwise patterns are more
+        // stable than individual recency.
+        if self.enable_resonance {
+            self.resonance_matrix.decay_tick();
+        }
+
+        // ── Maxwell's Demon: Fragment Consolidation ──
+        // Run every 5 turns (not every turn — consolidation is O(N²)
+        // and near-duplicates accumulate slowly).
+        if self.current_turn.is_multiple_of(5) && self.fragments.len() > 10 {
+            let frag_data: Vec<(String, u64, f64, bool, u32)> = self.fragments.values()
+                .map(|f| {
+                    let fm = self.feedback.learned_value(&f.fragment_id);
+                    (f.fragment_id.clone(), f.simhash, fm, f.is_pinned, f.token_count)
+                })
+                .collect();
+
+            let groups = resonance::find_consolidation_groups(
+                &frag_data, self.consolidation_hamming_threshold
+            );
+
+            for group in &groups {
+                // Transfer access counts from losers to winner
+                let total_access: u32 = group.consolidated_ids.iter()
+                    .filter_map(|id| self.fragments.get(id))
+                    .map(|f| f.access_count)
+                    .sum();
+
+                if let Some(winner) = self.fragments.get_mut(&group.winner_id) {
+                    winner.access_count += total_access;
+                }
+
+                // Evict losers
+                for loser_id in &group.consolidated_ids {
+                    self.fragments.remove(loser_id);
+                    self.dedup_index.remove(loser_id);
+                }
+
+                self.total_consolidations += group.consolidated_ids.len() as u64;
+                self.consolidation_tokens_saved += group.tokens_saved as u64;
+            }
+
+            // Rebuild LSH index if any consolidation occurred
+            if !groups.is_empty() {
+                self.rebuild_lsh_index();
+            }
+        }
     }
 
     /// Ingest a new context fragment.
@@ -677,13 +773,55 @@ impl EntrolyEngine {
                 .collect();
             let dep_boosts = self.dep_graph.compute_dep_boosts(&initial_selected_ids);
 
-            // Apply dep boosts to fragments' semantic scores
+            // ── Context Resonance: compute pairwise interaction bonuses ──
+            // For each unselected fragment, compute how much it "resonates" with
+            // the initial selection. High resonance → the pair has historically
+            // produced better LLM outputs together.
+            let resonance_bonuses: HashMap<String, f64> = if self.enable_resonance && !self.resonance_matrix.is_empty() {
+                let selected_refs: Vec<&str> = initial_selected_ids.iter().map(|s| s.as_str()).collect();
+                let candidate_refs: Vec<&str> = frags.iter()
+                    .filter(|f| !initial_selected_ids.contains(&f.fragment_id))
+                    .map(|f| f.fragment_id.as_str())
+                    .collect();
+                self.resonance_matrix.batch_resonance_bonuses(&candidate_refs, &selected_refs)
+            } else {
+                HashMap::new()
+            };
+
+            // ── Coverage Estimator: capture semantic vs structural candidate sets ──
+            // N₁ = semantic candidates (fragments with semantic_score > threshold)
+            let semantic_threshold = 0.15;
+            let semantic_candidate_ids: HashSet<String> = frags.iter()
+                .filter(|f| f.semantic_score > semantic_threshold)
+                .map(|f| f.fragment_id.clone())
+                .collect();
+            // N₂ = structural candidates (initial selection + dep boost targets)
+            let structural_candidate_ids: HashSet<String> = initial_selected_ids.iter().cloned()
+                .chain(dep_boosts.keys().filter(|k| dep_boosts[*k] > 0.3).cloned())
+                .collect();
+            // m = overlap
+            let candidate_overlap = semantic_candidate_ids.intersection(&structural_candidate_ids).count();
+            self.last_semantic_candidates = semantic_candidate_ids.len();
+            self.last_structural_candidates = structural_candidate_ids.len();
+            self.last_candidate_overlap = candidate_overlap;
+
+            // Apply dep boosts + resonance bonuses to fragments' semantic scores
             let mut boosted_frags = frags.clone();
             for frag in boosted_frags.iter_mut() {
                 if !initial_selected_ids.contains(&frag.fragment_id) {
                     if let Some(&boost) = dep_boosts.get(&frag.fragment_id) {
                         if boost > 0.3 {
                             frag.semantic_score = (frag.semantic_score + boost * 0.5).min(1.0);
+                        }
+                    }
+                    // Resonance boost: w_resonance modulates how much pairwise
+                    // interaction signal influences fragment selection.
+                    if let Some(&res_bonus) = resonance_bonuses.get(&frag.fragment_id) {
+                        if res_bonus.abs() > 0.01 {
+                            // Apply as additive boost to semantic score, scaled by w_resonance.
+                            // Positive resonance → boost, negative → suppress.
+                            let resonance_effect = self.w_resonance * res_bonus;
+                            frag.semantic_score = (frag.semantic_score + resonance_effect).clamp(0.0, 1.0);
                         }
                     }
                 }
@@ -1116,6 +1254,27 @@ impl EntrolyEngine {
                 py_result.set_item("ios_enabled", true)?;
             }
 
+            // ── Coverage Sufficiency Estimator (Unknown Unknowns) ──
+            // Chapman capture-recapture: how much of the relevant information
+            // space does our selected context cover?
+            let coverage_est = resonance::estimate_coverage(
+                ordered_indices.len() + skeleton_indices.len(),
+                self.last_semantic_candidates,
+                self.last_structural_candidates,
+                self.last_candidate_overlap,
+            );
+            py_result.set_item("coverage", (coverage_est.coverage * 10000.0).round() / 10000.0)?;
+            py_result.set_item("coverage_confidence", (coverage_est.confidence * 10000.0).round() / 10000.0)?;
+            py_result.set_item("coverage_gap", coverage_est.estimated_gap.round())?;
+            py_result.set_item("coverage_risk", coverage_est.risk_level)?;
+
+            // ── Resonance diagnostics ──
+            if self.enable_resonance {
+                py_result.set_item("resonance_pairs", self.resonance_matrix.len())?;
+                py_result.set_item("resonance_strength", (self.resonance_matrix.mean_strength() * 10000.0).round() / 10000.0)?;
+                py_result.set_item("w_resonance", (self.w_resonance * 10000.0).round() / 10000.0)?;
+            }
+
             // Selected fragment details (in LLM-optimal order)
             let selected_list = pyo3::types::PyList::empty(py);
             for &idx in &ordered_indices {
@@ -1451,6 +1610,40 @@ impl EntrolyEngine {
                 result.set_item("query_manifold", manifold)?;
             }
 
+            // ── Context Resonance stats ──
+            if self.enable_resonance {
+                let res_dict = PyDict::new(py);
+                res_dict.set_item("tracked_pairs", self.resonance_matrix.len())?;
+                res_dict.set_item("mean_strength", (self.resonance_matrix.mean_strength() * 10000.0).round() / 10000.0)?;
+                res_dict.set_item("w_resonance", (self.w_resonance * 10000.0).round() / 10000.0)?;
+                // 5D PRISM diagnostics
+                let diag = self.prism_optimizer_5d.resonance_diagnostics();
+                res_dict.set_item("resonance_energy_fraction", (diag.resonance_energy_fraction * 10000.0).round() / 10000.0)?;
+                res_dict.set_item("resonance_eigenvalue", (diag.resonance_eigenvalue * 10000.0).round() / 10000.0)?;
+                res_dict.set_item("resonance_alignment", (diag.resonance_alignment * 10000.0).round() / 10000.0)?;
+                res_dict.set_item("is_calibrated", diag.is_calibrated)?;
+                res_dict.set_item("condition_number_5d", (self.prism_optimizer_5d.condition_number() * 100.0).round() / 100.0)?;
+                // Top resonance pairs (for dashboard)
+                let top = self.resonance_matrix.top_pairs(5);
+                let top_list = pyo3::types::PyList::empty(py);
+                for (a, b, strength, cos) in &top {
+                    let pair = PyDict::new(py);
+                    pair.set_item("a", a.as_str())?;
+                    pair.set_item("b", b.as_str())?;
+                    pair.set_item("strength", (*strength * 10000.0).round() / 10000.0)?;
+                    pair.set_item("co_selections", *cos)?;
+                    top_list.append(pair)?;
+                }
+                res_dict.set_item("top_pairs", top_list)?;
+                result.set_item("resonance", res_dict)?;
+            }
+
+            // ── Fragment Consolidation stats ──
+            let consol = PyDict::new(py);
+            consol.set_item("total_consolidations", self.total_consolidations)?;
+            consol.set_item("tokens_saved", self.consolidation_tokens_saved)?;
+            result.set_item("consolidation", consol)?;
+
             Ok(result.into())
         })
     }
@@ -1652,6 +1845,10 @@ impl EntrolyEngine {
         let advantage = raw_reward - self.reward_baseline_ema;
         // μ ← 0.9·μ + 0.1·R  (~10-step memory horizon)
         self.reward_baseline_ema = 0.9 * self.reward_baseline_ema + 0.1 * raw_reward;
+        // Context Resonance: learn pairwise interaction strengths
+        if self.enable_resonance {
+            self.resonance_matrix.record_outcome(&fragment_ids, advantage, self.current_turn);
+        }
         self.apply_prism_rl_update(&fragment_ids, advantage);
     }
 
@@ -1683,6 +1880,10 @@ impl EntrolyEngine {
         let advantage = raw_reward - self.reward_baseline_ema;
         // μ ← 0.9·μ + 0.1·R
         self.reward_baseline_ema = 0.9 * self.reward_baseline_ema + 0.1 * raw_reward;
+        // Context Resonance: learn pairwise interaction strengths (negative signal)
+        if self.enable_resonance {
+            self.resonance_matrix.record_outcome(&fragment_ids, advantage, self.current_turn);
+        }
         self.apply_prism_rl_update(&fragment_ids, advantage);
     }
 
@@ -1728,6 +1929,10 @@ impl EntrolyEngine {
         let advantage = r - self.reward_baseline_ema;
         // μ ← 0.9·μ + 0.1·R
         self.reward_baseline_ema = 0.9 * self.reward_baseline_ema + 0.1 * r;
+        // Context Resonance: continuous reward signal for pairwise learning
+        if self.enable_resonance {
+            self.resonance_matrix.record_outcome(&fragment_ids, advantage, self.current_turn);
+        }
         self.apply_prism_rl_update(&fragment_ids, advantage);
     }
 
@@ -1984,6 +2189,13 @@ impl EntrolyEngine {
             gradient_norm_ema: self.gradient_norm_ema,
             // EGSC cache warm-start: serialize cache state as nested JSON
             cache_snapshot: self.egsc_cache.export_cache().ok(),
+            // Context Resonance persistence
+            resonance_matrix: &self.resonance_matrix,
+            prism_optimizer_5d: &self.prism_optimizer_5d,
+            w_resonance: self.w_resonance,
+            // Consolidation persistence
+            total_consolidations: self.total_consolidations,
+            consolidation_tokens_saved: self.consolidation_tokens_saved,
         };
         serde_json::to_string(&state).map_err(|e| {
             pyo3::exceptions::PyRuntimeError::new_err(format!("Serialization failed: {}", e))
@@ -2043,6 +2255,17 @@ impl EntrolyEngine {
                 Err(e) => eprintln!("[entroly] Cache restore skipped: {}", e),
             }
         }
+        // Context Resonance warm-start
+        if let Some(rm) = state.resonance_matrix {
+            self.resonance_matrix = rm;
+        }
+        if let Some(p5) = state.prism_optimizer_5d {
+            self.prism_optimizer_5d = p5;
+        }
+        self.w_resonance = state.w_resonance;
+        // Consolidation stats
+        self.total_consolidations = state.total_consolidations;
+        self.consolidation_tokens_saved = state.consolidation_tokens_saved;
         Ok(())
     }
 
@@ -2322,10 +2545,18 @@ impl EntrolyEngine {
 
         // Compute REINFORCE-with-baseline policy gradient
         let mut g = [0.0_f64; 4]; // [∂/∂w_r, ∂/∂w_f, ∂/∂w_s, ∂/∂w_e]
+        // 5D gradient includes resonance dimension
+        let mut g5 = [0.0_f64; 5]; // [∂/∂w_r, ∂/∂w_f, ∂/∂w_s, ∂/∂w_e, ∂/∂w_res]
         // λ* from the last forward bisection — use the SAME probability as the forward pass.
         // p_i = σ((s_i − λ*·tokens_i)/τ) is the exact KKT soft selection probability.
         // Reusing it here ensures advantage = (action − p_exact) × R is an unbiased estimator.
         let lambda = self.last_lambda_star;
+
+        // Pre-compute resonance features for the 5th gradient dimension.
+        // For each fragment, its "resonance feature" is the mean resonance
+        // bonus with the co-selected set — this is the partial derivative
+        // ∂score/∂w_resonance that drives PRISM's 5th dimension learning.
+        let selected_ids_vec: Vec<&str> = selected.iter().copied().collect();
 
         for frag in self.fragments.values_mut() {
             // Linear score (pre-softcap — same landscape as forward pass)
@@ -2364,6 +2595,18 @@ impl EntrolyEngine {
             g[prism::dim::FREQUENCY] += advantage * frag.frequency_score;
             g[prism::dim::SEMANTIC]  += advantage * frag.semantic_score;
             g[prism::dim::ENTROPY]   += advantage * frag.entropy_score;
+
+            // 5D gradient: resonance feature = mean pairwise resonance with co-selected set
+            if self.enable_resonance {
+                let res_feature = self.resonance_matrix.resonance_bonus(
+                    frag.fragment_id.as_str(), &selected_ids_vec
+                );
+                g5[prism::dim::RECENCY]   += advantage * frag.recency_score;
+                g5[prism::dim::FREQUENCY] += advantage * frag.frequency_score;
+                g5[prism::dim::SEMANTIC]  += advantage * frag.semantic_score;
+                g5[prism::dim::ENTROPY]   += advantage * frag.entropy_score;
+                g5[prism::dim::RESONANCE] += advantage * res_feature;
+            }
         }
 
 
@@ -2418,13 +2661,27 @@ impl EntrolyEngine {
         self.w_semantic  += update[prism::dim::SEMANTIC];
         self.w_entropy   += update[prism::dim::ENTROPY];
 
+        // ── 5D PRISM: learn w_resonance via spectral shaping ──
+        // The resonance dimension has inherently higher gradient variance
+        // (combinatorial noise from pairwise interactions). PRISM 5D's
+        // Λ⁻¹/² automatically dampens this — no manual learning rate needed.
+        if self.enable_resonance {
+            let update5 = self.prism_optimizer_5d.compute_update(&g5);
+            self.w_resonance += update5[prism::dim::RESONANCE];
+            // Resonance weight: [0.0, 0.5] — capped lower than base dims
+            // because it's a secondary signal that augments, not replaces.
+            self.w_resonance = self.w_resonance.clamp(0.0, 0.5);
+        }
+
         // Prevent collapse: clamp weights to positive bounds [0.05, 0.8]
         self.w_recency   = self.w_recency.clamp(0.05, 0.8);
         self.w_frequency = self.w_frequency.clamp(0.05, 0.8);
         self.w_semantic  = self.w_semantic.clamp(0.05, 0.8);
         self.w_entropy   = self.w_entropy.clamp(0.05, 0.8);
 
-        // Normalize weights so they sum to 1.0 to preserve scoring scale
+        // Normalize base weights so they sum to 1.0 to preserve scoring scale.
+        // w_resonance is NOT included in the normalization — it's a separate
+        // additive dimension that modulates selection independently.
         let sum = self.w_recency + self.w_frequency + self.w_semantic + self.w_entropy;
         self.w_recency   /= sum;
         self.w_frequency /= sum;
@@ -2512,6 +2769,13 @@ struct EngineState<'a> {
     /// EGSC cache snapshot (JSON) — warm-start persistence.
     /// Nested JSON string to avoid coupling EngineState to cache internals.
     cache_snapshot: Option<String>,
+    // ── Context Resonance persistence ──
+    resonance_matrix: &'a ResonanceMatrix,
+    prism_optimizer_5d: &'a PrismOptimizer5D,
+    w_resonance: f64,
+    // ── Consolidation persistence ──
+    total_consolidations: u64,
+    consolidation_tokens_saved: u64,
 }
 
 /// Owned state for deserialization.
@@ -2547,6 +2811,18 @@ struct OwnedEngineState {
     /// EGSC cache snapshot — warm-start persistence (optional for backward-compat).
     #[serde(default)]
     cache_snapshot: Option<String>,
+    // ── Context Resonance (optional for backward-compat with old checkpoints) ──
+    #[serde(default)]
+    resonance_matrix: Option<ResonanceMatrix>,
+    #[serde(default)]
+    prism_optimizer_5d: Option<PrismOptimizer5D>,
+    #[serde(default)]
+    w_resonance: f64,
+    // ── Consolidation (optional for backward-compat) ──
+    #[serde(default)]
+    total_consolidations: u64,
+    #[serde(default)]
+    consolidation_tokens_saved: u64,
 }
 
 fn default_max_fragments() -> usize { 10_000 }
@@ -3027,6 +3303,8 @@ mod tests {
         let feedback = FeedbackTracker::new();
 
         let prism_test = crate::prism::PrismOptimizer::new(0.01);
+        let resonance_test = ResonanceMatrix::new();
+        let prism5_test = PrismOptimizer5D::from_4d(&prism_test);
         let state = EngineState {
             fragments: fragments.clone(),
             dedup_index: &dedup_index,
@@ -3048,6 +3326,11 @@ mod tests {
             gradient_temperature: 2.0,
             gradient_norm_ema: 0.0,
             cache_snapshot: None,
+            resonance_matrix: &resonance_test,
+            prism_optimizer_5d: &prism5_test,
+            w_resonance: 0.0,
+            total_consolidations: 0,
+            consolidation_tokens_saved: 0,
         };
 
         let json = serde_json::to_string(&state).expect("failed to serialize OwnedEngineState to JSON");

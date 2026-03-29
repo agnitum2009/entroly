@@ -1056,6 +1056,17 @@ class PromptCompilerProxy:
         selected = result.get("selected_fragments", [])
         refinement = result.get("query_refinement")
 
+        # ── Context Resonance + Coverage Estimator metrics ──
+        # These come from the Rust engine's optimize() and are forwarded
+        # to response headers for observability.
+        self._last_coverage = result.get("coverage", 0.0)
+        self._last_coverage_confidence = result.get("coverage_confidence", 0.0)
+        self._last_coverage_risk = result.get("coverage_risk", "unknown")
+        self._last_coverage_gap = result.get("coverage_gap", 0.0)
+        self._last_resonance_pairs = result.get("resonance_pairs", 0)
+        self._last_resonance_strength = result.get("resonance_strength", 0.0)
+        self._last_w_resonance = result.get("w_resonance", 0.0)
+
         # Build refinement info for the context block
         refinement_info = None
         # Extract vagueness from query_analysis (always present) rather than
@@ -1124,6 +1135,8 @@ class PromptCompilerProxy:
         if self.config.enable_prompt_directives:
             apa_kwargs["task_type"] = task_type
             apa_kwargs["vagueness"] = vagueness
+            apa_kwargs["coverage_risk"] = self._last_coverage_risk
+            apa_kwargs["coverage"] = self._last_coverage
 
         if hcc_result is not None:
             # Hierarchical: 3-level compression
@@ -1276,6 +1289,15 @@ class PromptCompilerProxy:
             quality_trend = self._feedback_tracker.quality_trend()
             if quality_trend != "stable":
                 resp_headers["X-Entroly-Quality-Trend"] = quality_trend
+            # Context Resonance + Coverage Estimator headers
+            if hasattr(self, '_last_coverage'):
+                resp_headers["X-Entroly-Coverage"] = f"{self._last_coverage:.4f}"
+                resp_headers["X-Entroly-Coverage-Risk"] = str(self._last_coverage_risk)
+                resp_headers["X-Entroly-Coverage-Confidence"] = f"{self._last_coverage_confidence:.4f}"
+            if hasattr(self, '_last_resonance_pairs') and self._last_resonance_pairs > 0:
+                resp_headers["X-Entroly-Resonance-Pairs"] = str(self._last_resonance_pairs)
+                resp_headers["X-Entroly-Resonance-Strength"] = f"{self._last_resonance_strength:.4f}"
+                resp_headers["X-Entroly-W-Resonance"] = f"{self._last_w_resonance:.4f}"
 
         return StreamingResponse(
             event_generator(),
@@ -1366,6 +1388,15 @@ class PromptCompilerProxy:
             quality_trend = self._feedback_tracker.quality_trend()
             if quality_trend != "stable":
                 resp_headers["X-Entroly-Quality-Trend"] = quality_trend
+            # Context Resonance + Coverage Estimator headers (non-streaming path)
+            if hasattr(self, '_last_coverage'):
+                resp_headers["X-Entroly-Coverage"] = f"{self._last_coverage:.4f}"
+                resp_headers["X-Entroly-Coverage-Risk"] = str(self._last_coverage_risk)
+                resp_headers["X-Entroly-Coverage-Confidence"] = f"{self._last_coverage_confidence:.4f}"
+            if hasattr(self, '_last_resonance_pairs') and self._last_resonance_pairs > 0:
+                resp_headers["X-Entroly-Resonance-Pairs"] = str(self._last_resonance_pairs)
+                resp_headers["X-Entroly-Resonance-Strength"] = f"{self._last_resonance_strength:.4f}"
+                resp_headers["X-Entroly-W-Resonance"] = f"{self._last_w_resonance:.4f}"
 
         # Validate response content-type before parsing JSON
         content_type = response.headers.get("content-type", "")
