@@ -51,12 +51,38 @@ pub fn file_criticality(path: &str) -> Criticality {
         "package.json" | "package-lock.json"
         | "requirements.txt" | "pyproject.toml" | "setup.py" | "setup.cfg"
         | "cargo.toml" | "cargo.lock"
-        | "tsconfig.json" | "webpack.config.js" | "vite.config.ts"
+        | "tsconfig.json" | "webpack.config.js" | "webpack.config.ts"
+        | "vite.config.ts" | "vite.config.js" | "vite.config.mts"
+        | "next.config.js" | "next.config.mjs" | "next.config.ts"
+        | "angular.json" | "nuxt.config.ts" | "nuxt.config.js"
+        | "remix.config.js" | "remix.config.ts"
+        | "svelte.config.js" | "svelte.config.ts" | "astro.config.mjs"
+        | "tailwind.config.js" | "tailwind.config.ts" | "tailwind.config.mjs"
+        | "app.vue" | "nuxt.config.mjs"
+        | "gatsby-config.js" | "gatsby-config.ts"
+        | "next.config.mts"
+        | "postcss.config.js" | "postcss.config.mjs"
+        | "jest.config.js" | "jest.config.ts"
+        | "vitest.config.ts" | "vitest.config.js"
+        | "babel.config.js" | "babel.config.json" | ".babelrc"
+        | ".eslintrc.js" | ".eslintrc.json" | ".eslintrc.cjs"
+        | "eslint.config.js" | "eslint.config.mjs"
+        | "prettier.config.js" | ".prettierrc" | ".prettierrc.json"
         | "dockerfile" | "docker-compose.yml" | "docker-compose.yaml"
         | ".env" | ".env.example" | ".env.local"
         | "makefile" | "cmakelists.txt"
         | "go.mod" | "go.sum"
         | ".gitignore" | ".dockerignore"
+        // Terraform / IaC
+        | "main.tf" | "variables.tf" | "outputs.tf" | "providers.tf"
+        | "terraform.tfvars" | "backend.tf"
+        // Helm / K8s
+        | "chart.yaml" | "values.yaml" | "values.yml"
+        | "kustomization.yaml" | "kustomization.yml"
+        // C# / .NET
+        | "program.cs" | "startup.cs" | "appsettings.json"
+        // Swift / iOS
+        | "package.swift" | "podfile" | "cartfile"
     ) {
         return Criticality::Critical;
     }
@@ -73,15 +99,29 @@ pub fn file_criticality(path: &str) -> Criticality {
         || basename == "models.py"
         || basename == "schema.py"
         || basename == "schema.rs"
+        || basename.ends_with(".tf")
+        || basename.ends_with(".hcl")
     {
         return Criticality::Critical;
+    }
+
+    // SAFETY: Terraform state files — NEVER drop (contain real infra state)
+    if basename == "terraform.tfstate" || basename == "terraform.tfstate.backup" {
+        return Criticality::Safety;
     }
 
     // IMPORTANT: Test files — high value for understanding
     if basename.starts_with("test_")
         || basename.ends_with("_test.rs")
+        || basename.ends_with("_test.go")
         || basename.ends_with(".test.ts")
+        || basename.ends_with(".test.tsx")
         || basename.ends_with(".test.js")
+        || basename.ends_with(".test.jsx")
+        || basename.ends_with(".spec.ts")
+        || basename.ends_with(".spec.tsx")
+        || basename.ends_with(".spec.js")
+        || basename.ends_with(".spec.jsx")
         || basename.ends_with("_spec.rb")
     {
         return Criticality::Important;

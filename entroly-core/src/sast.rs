@@ -740,6 +740,1144 @@ static RULES: &[SastRule] = &[
         languages: &["py"],
         taint_aware: false,
     },
+
+    // ── Category 11: Node.js-specific (CWE-78, CWE-22, CWE-89, CWE-1321) ──
+    SastRule {
+        id: "NODE-001", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "child_process",
+        requires: Some("exec("),
+        suppressed_by: None,
+        description: "child_process.exec() passes input through a shell — command injection if arguments contain user data.",
+        fix: "Use child_process.execFile() or child_process.spawn() with an argument array. Never pass user input to exec().",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-002", cwe: 78, severity: Severity::High,
+        category: "Command Injection",
+        pattern: "exec(",
+        requires: Some("require"),
+        suppressed_by: Some("execfile"),
+        description: "exec() from child_process with require — likely shell command execution.",
+        fix: "Replace with execFile() or spawn() with explicit argument arrays.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-003", cwe: 1321, severity: Severity::High,
+        category: "Prototype Pollution",
+        pattern: "__proto__",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "Direct __proto__ access — prototype pollution can lead to denial of service or RCE.",
+        fix: "Use Object.create(null) for lookup maps. Validate that keys are not '__proto__', 'constructor', or 'prototype'.",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "NODE-004", cwe: 1321, severity: Severity::High,
+        category: "Prototype Pollution",
+        pattern: "object.assign(",
+        requires: Some("req"),
+        suppressed_by: None,
+        description: "Object.assign() with request body — prototype pollution if input contains __proto__ key.",
+        fix: "Validate/sanitize input keys before merging. Use a schema validator (Zod, Joi) to strip unknown properties.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-005", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "${",
+        requires: Some("query"),
+        suppressed_by: Some("sanitize"),
+        description: "Template literal interpolation in SQL query — SQL injection via string building.",
+        fix: "Use parameterized queries: db.query('SELECT * FROM users WHERE id = $1', [id]).",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-006", cwe: 22, severity: Severity::High,
+        category: "Path Traversal",
+        pattern: "readfile",
+        requires: Some("req"),
+        suppressed_by: None,
+        description: "fs.readFile with request-derived path — path traversal to read arbitrary files.",
+        fix: "Use path.resolve() and verify the result starts with the allowed base directory.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-007", cwe: 918, severity: Severity::High,
+        category: "SSRF",
+        pattern: "fetch(",
+        requires: Some("req"),
+        suppressed_by: Some("allowlist"),
+        description: "fetch() with request-derived URL — server-side request forgery (SSRF).",
+        fix: "Validate URLs against an allowlist of permitted hosts. Block internal/private IP ranges.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-008", cwe: 918, severity: Severity::High,
+        category: "SSRF",
+        pattern: "axios",
+        requires: Some("req"),
+        suppressed_by: Some("allowlist"),
+        description: "axios request with user-controlled URL — SSRF vulnerability.",
+        fix: "Validate the target URL against an allowlist. Parse the URL and reject private/internal IP ranges.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-009", cwe: 1333, severity: Severity::Medium,
+        category: "ReDoS",
+        pattern: "new regexp(",
+        requires: Some("req"),
+        suppressed_by: None,
+        description: "RegExp constructed from user input — ReDoS (catastrophic backtracking) risk.",
+        fix: "Never build RegExp from user input. If necessary, use a safe regex library like re2 or safe-regex.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NODE-010", cwe: 601, severity: Severity::Medium,
+        category: "Open Redirect",
+        pattern: "redirect(",
+        requires: Some("req"),
+        suppressed_by: Some("allowlist"),
+        description: "HTTP redirect with user-controlled URL — open redirect enables phishing attacks.",
+        fix: "Validate redirect targets against an allowlist of permitted paths/domains.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+
+    // ── Category 12: Go-specific (CWE-78, CWE-89, CWE-798) ──────────
+    SastRule {
+        id: "GO-001", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "db.query(",
+        requires: Some("+"),
+        suppressed_by: None,
+        description: "Go SQL query built with string concatenation — SQL injection vector.",
+        fix: "Use parameterized queries: db.Query(\"SELECT * FROM users WHERE id = $1\", id)",
+        languages: &["go"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "GO-002", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "fmt.sprintf",
+        requires: Some("select"),
+        suppressed_by: None,
+        description: "SQL query built with fmt.Sprintf — injection via string formatting.",
+        fix: "Use parameterized queries with database/sql instead of formatting SQL strings.",
+        languages: &["go"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "GO-003", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "exec.command(",
+        requires: Some("+"),
+        suppressed_by: None,
+        description: "os/exec.Command with concatenated input — command injection.",
+        fix: "Pass arguments as separate parameters to exec.Command, not as a single concatenated string.",
+        languages: &["go"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "GO-004", cwe: 22, severity: Severity::High,
+        category: "Path Traversal",
+        pattern: "filepath.join(",
+        requires: Some("request"),
+        suppressed_by: None,
+        description: "filepath.Join with request-derived path — path traversal if not validated.",
+        fix: "Use filepath.Clean() then verify the path starts with the expected base directory.",
+        languages: &["go"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "GO-005", cwe: 295, severity: Severity::High,
+        category: "Insecure Config",
+        pattern: "insecureskipverify",
+        requires: Some("true"),
+        suppressed_by: None,
+        description: "TLS InsecureSkipVerify=true disables certificate validation — MITM risk.",
+        fix: "Remove InsecureSkipVerify. For dev, configure a custom CA cert pool instead.",
+        languages: &["go"],
+        taint_aware: false,
+    },
+
+    // ── Category 13: Java-specific (CWE-89, CWE-611, CWE-502, CWE-918) ─
+    SastRule {
+        id: "JAVA-001", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "createquery(",
+        requires: Some("+"),
+        suppressed_by: None,
+        description: "JPA/Hibernate createQuery with string concatenation — SQL injection.",
+        fix: "Use named parameters: createQuery(\"... WHERE id = :id\").setParameter(\"id\", id)",
+        languages: &["java"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "JAVA-002", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "statement.execute",
+        requires: Some("+"),
+        suppressed_by: None,
+        description: "JDBC Statement.execute with concatenation — SQL injection.",
+        fix: "Use PreparedStatement with ? placeholders and setString()/setInt() bindings.",
+        languages: &["java"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "JAVA-003", cwe: 611, severity: Severity::High,
+        category: "XXE",
+        pattern: "documentbuilderfactory",
+        requires: None,
+        suppressed_by: Some("disallow-doctype-decl"),
+        description: "XML DocumentBuilderFactory without XXE protection — XML External Entity injection.",
+        fix: "Set factory.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true)",
+        languages: &["java"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "JAVA-004", cwe: 502, severity: Severity::Critical,
+        category: "Unsafe Deserialization",
+        pattern: "objectinputstream",
+        requires: None,
+        suppressed_by: Some("objectinputfilter"),
+        description: "Java ObjectInputStream deserialization — RCE via gadget chains (ysoserial).",
+        fix: "Avoid ObjectInputStream on untrusted data. Use JSON/protobuf or configure ObjectInputFilter.",
+        languages: &["java"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "JAVA-005", cwe: 918, severity: Severity::High,
+        category: "SSRF",
+        pattern: "new url(",
+        requires: Some("request"),
+        suppressed_by: Some("allowlist"),
+        description: "java.net.URL constructed from request input — SSRF vulnerability.",
+        fix: "Validate URLs against an allowlist of permitted hosts. Block internal/private IP ranges.",
+        languages: &["java"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "JAVA-006", cwe: 327, severity: Severity::High,
+        category: "Insecure Cryptography",
+        pattern: "messagedigest.getinstance",
+        requires: Some("md5"),
+        suppressed_by: None,
+        description: "Java MessageDigest using MD5 — broken hash algorithm.",
+        fix: "Use MessageDigest.getInstance(\"SHA-256\") or bcrypt for passwords.",
+        languages: &["java"],
+        taint_aware: false,
+    },
+
+    // ── Category 14: Dockerfile SAST (CWE-250, CWE-829) ──────────────
+    SastRule {
+        id: "DOCKER-001", cwe: 250, severity: Severity::High,
+        category: "Container Security",
+        pattern: "user root",
+        requires: None,
+        suppressed_by: None,
+        description: "Dockerfile runs as root — container escape gives host root access.",
+        fix: "Add 'USER nonroot' or 'USER 1000' before the CMD/ENTRYPOINT instruction.",
+        languages: &["dockerfile"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "DOCKER-002", cwe: 829, severity: Severity::Medium,
+        category: "Container Security",
+        pattern: ":latest",
+        requires: Some("from"),
+        suppressed_by: None,
+        description: "Docker FROM uses :latest tag — builds are non-reproducible and may break.",
+        fix: "Pin to a specific image digest or version tag: FROM node:20-alpine@sha256:...",
+        languages: &["dockerfile"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "DOCKER-003", cwe: 798, severity: Severity::Critical,
+        category: "Hardcoded Secrets",
+        pattern: "env ",
+        requires: Some("password"),
+        suppressed_by: None,
+        description: "Secret passed via ENV in Dockerfile — visible in docker inspect and image layers.",
+        fix: "Use Docker secrets, build args with --secret, or runtime env injection instead.",
+        languages: &["dockerfile"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "DOCKER-004", cwe: 829, severity: Severity::High,
+        category: "Container Security",
+        pattern: "curl",
+        requires: Some("| sh"),
+        suppressed_by: None,
+        description: "curl piped to shell in Dockerfile — supply chain attack vector.",
+        fix: "Download then verify checksum before executing. Use package managers when available.",
+        languages: &["dockerfile"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "DOCKER-005", cwe: 829, severity: Severity::Medium,
+        category: "Container Security",
+        pattern: "copy . .",
+        requires: None,
+        suppressed_by: Some(".dockerignore"),
+        description: "COPY . . without .dockerignore — may copy secrets, .git, node_modules into image.",
+        fix: "Create a .dockerignore file excluding .git, .env, node_modules, and other sensitive files.",
+        languages: &["dockerfile"],
+        taint_aware: false,
+    },
+
+    // ── Category 15: Terraform/IaC SAST (CWE-284, CWE-732) ───────────
+    SastRule {
+        id: "TF-001", cwe: 284, severity: Severity::Critical,
+        category: "Infrastructure Security",
+        pattern: "0.0.0.0/0",
+        requires: None,
+        suppressed_by: Some("egress"),
+        description: "Security group/firewall rule open to 0.0.0.0/0 — exposed to the entire internet.",
+        fix: "Restrict CIDR blocks to specific IPs or VPN ranges. Never use 0.0.0.0/0 for ingress.",
+        languages: &["tf", "hcl"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "TF-002", cwe: 732, severity: Severity::Critical,
+        category: "Infrastructure Security",
+        pattern: "acl",
+        requires: Some("public-read"),
+        suppressed_by: None,
+        description: "S3 bucket ACL set to public-read — data exposed to anonymous internet access.",
+        fix: "Remove public ACL. Use bucket policies with specific principal ARNs for access control.",
+        languages: &["tf", "hcl"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "TF-003", cwe: 311, severity: Severity::High,
+        category: "Infrastructure Security",
+        pattern: "encrypted",
+        requires: Some("false"),
+        suppressed_by: None,
+        description: "Storage encryption explicitly disabled — data at rest is unprotected.",
+        fix: "Set encrypted = true and configure a KMS key for encryption at rest.",
+        languages: &["tf", "hcl"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "TF-004", cwe: 284, severity: Severity::High,
+        category: "Infrastructure Security",
+        pattern: "\"*\"",
+        requires: Some("action"),
+        suppressed_by: None,
+        description: "IAM policy with Action: \"*\" — grants unrestricted permissions.",
+        fix: "Follow least-privilege: specify exact actions needed (e.g., s3:GetObject, s3:PutObject).",
+        languages: &["tf", "hcl"],
+        taint_aware: false,
+    },
+
+    // ── Category 16: Kubernetes SAST (CWE-250, CWE-284) ──────────────
+    SastRule {
+        id: "K8S-001", cwe: 250, severity: Severity::Critical,
+        category: "Container Security",
+        pattern: "privileged",
+        requires: Some("true"),
+        suppressed_by: Some("test"),
+        description: "Kubernetes container running in privileged mode — full host access, container escape trivial.",
+        fix: "Remove privileged: true. Use specific capabilities (NET_ADMIN, SYS_TIME) if needed.",
+        languages: &["k8s"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "K8S-002", cwe: 250, severity: Severity::High,
+        category: "Container Security",
+        pattern: "hostpath",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "Kubernetes hostPath volume — exposes host filesystem to container.",
+        fix: "Use persistent volume claims (PVC) instead of hostPath for data persistence.",
+        languages: &["k8s"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "K8S-003", cwe: 250, severity: Severity::High,
+        category: "Container Security",
+        pattern: "runasuser",
+        requires: Some("0"),
+        suppressed_by: None,
+        description: "Kubernetes pod running as root (UID 0) — container escape gives host root.",
+        fix: "Set runAsUser: 1000 (or any non-root UID) and runAsNonRoot: true in securityContext.",
+        languages: &["k8s"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "K8S-004", cwe: 284, severity: Severity::Medium,
+        category: "Container Security",
+        pattern: "allowprivilegeescalation",
+        requires: Some("true"),
+        suppressed_by: None,
+        description: "allowPrivilegeEscalation: true — process can gain more privileges than its parent.",
+        fix: "Set allowPrivilegeEscalation: false in the container securityContext.",
+        languages: &["k8s"],
+        taint_aware: false,
+    },
+
+    // ── Category 17: Shell script SAST (CWE-78, CWE-732) ─────────────
+    SastRule {
+        id: "SHELL-001", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "eval ",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "Shell eval — executes arbitrary code, injection risk with any dynamic input.",
+        fix: "Eliminate eval. Use arrays and proper quoting for dynamic arguments.",
+        languages: &["sh", "bash"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SHELL-002", cwe: 829, severity: Severity::High,
+        category: "Supply Chain",
+        pattern: "curl",
+        requires: Some("| bash"),
+        suppressed_by: None,
+        description: "curl piped to bash — remote code execution from untrusted source.",
+        fix: "Download the script, verify its checksum/signature, then execute.",
+        languages: &["sh", "bash"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SHELL-003", cwe: 732, severity: Severity::High,
+        category: "Insecure Permissions",
+        pattern: "chmod 777",
+        requires: None,
+        suppressed_by: None,
+        description: "chmod 777 — world-writable, any user can modify and execute the file.",
+        fix: "Use least-privilege permissions: chmod 755 for executables, chmod 644 for data files.",
+        languages: &["sh", "bash"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SHELL-004", cwe: 78, severity: Severity::Medium,
+        category: "Command Injection",
+        pattern: "$(",
+        requires: Some("rm"),
+        suppressed_by: None,
+        description: "Command substitution with rm — accidental deletion if variable is empty/malformed.",
+        fix: "Always quote variables: rm \"${path}\" and validate before deletion.",
+        languages: &["sh", "bash"],
+        taint_aware: false,
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // P0: C/C++ SAST (CWE-120, CWE-134, CWE-78, CWE-416, CWE-190)
+    // ══════════════════════════════════════════════════════════════════
+
+    // ── Buffer overflow (CWE-120) ─────────────────────────────────────
+    SastRule {
+        id: "CPP-001", cwe: 120, severity: Severity::Critical,
+        category: "Buffer Overflow",
+        pattern: "strcpy(",
+        requires: None,
+        suppressed_by: Some("strncpy"),
+        description: "strcpy has no bounds checking — buffer overflow if source exceeds destination size.",
+        fix: "Use strncpy(dst, src, sizeof(dst)-1) or snprintf(). Better: use std::string in C++.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CPP-002", cwe: 120, severity: Severity::Critical,
+        category: "Buffer Overflow",
+        pattern: "gets(",
+        requires: None,
+        suppressed_by: None,
+        description: "gets() has no length limit — guaranteed buffer overflow on long input. Removed in C11.",
+        fix: "Use fgets(buf, sizeof(buf), stdin). Never use gets().",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CPP-003", cwe: 120, severity: Severity::High,
+        category: "Buffer Overflow",
+        pattern: "sprintf(",
+        requires: None,
+        suppressed_by: Some("snprintf"),
+        description: "sprintf has no bounds checking — buffer overflow if formatted output exceeds buffer.",
+        fix: "Use snprintf(buf, sizeof(buf), fmt, ...) which truncates safely.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CPP-004", cwe: 120, severity: Severity::High,
+        category: "Buffer Overflow",
+        pattern: "strcat(",
+        requires: None,
+        suppressed_by: Some("strncat"),
+        description: "strcat has no bounds checking — overflow if concatenated result exceeds buffer.",
+        fix: "Use strncat(dst, src, sizeof(dst)-strlen(dst)-1) or std::string.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CPP-005", cwe: 120, severity: Severity::Medium,
+        category: "Buffer Overflow",
+        pattern: "scanf(",
+        requires: None,
+        suppressed_by: None,
+        description: "scanf with %s reads unbounded input — buffer overflow for long input strings.",
+        fix: "Use field width: scanf(\"%255s\", buf) or fgets() + sscanf().",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+
+    // ── Format string (CWE-134) ───────────────────────────────────────
+    SastRule {
+        id: "CPP-006", cwe: 134, severity: Severity::Critical,
+        category: "Format String",
+        pattern: "printf(",
+        requires: Some("argv"),
+        suppressed_by: None,
+        description: "printf with user-controlled format string — can read/write arbitrary memory via %n, %x.",
+        fix: "Always use a literal format string: printf(\"%s\", user_input) instead of printf(user_input).",
+        languages: &["c", "cpp"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "CPP-007", cwe: 134, severity: Severity::High,
+        category: "Format String",
+        pattern: "syslog(",
+        requires: None,
+        suppressed_by: None,
+        description: "syslog with user-controlled format string — format string attack vector.",
+        fix: "Use syslog(LOG_INFO, \"%s\", message) with explicit format string.",
+        languages: &["c", "cpp"],
+        taint_aware: true,
+    },
+
+    // ── Command injection (CWE-78) ────────────────────────────────────
+    SastRule {
+        id: "CPP-008", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "system(",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "system() passes command to shell — injection if any argument contains user input.",
+        fix: "Use exec family (execvp) with argument arrays. Avoid system() entirely in production code.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CPP-009", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "popen(",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "popen() runs command through shell — same injection risk as system().",
+        fix: "Use pipe()/fork()/exec() for safe subprocess creation without shell interpretation.",
+        languages: &["c", "cpp"],
+        taint_aware: true,
+    },
+
+    // ── Use-after-free (CWE-416) ──────────────────────────────────────
+    SastRule {
+        id: "CPP-010", cwe: 416, severity: Severity::High,
+        category: "Memory Safety",
+        pattern: "free(",
+        requires: Some("->"),
+        suppressed_by: None,
+        description: "Pointer dereference after or near free() — potential use-after-free vulnerability.",
+        fix: "Set pointer to NULL after free(). Use smart pointers (unique_ptr, shared_ptr) in C++.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+
+    // ── Integer overflow (CWE-190) ────────────────────────────────────
+    SastRule {
+        id: "CPP-011", cwe: 190, severity: Severity::Medium,
+        category: "Integer Overflow",
+        pattern: "malloc(",
+        requires: Some("*"),
+        suppressed_by: Some("check"),
+        description: "malloc with multiplication — integer overflow in size calculation can cause heap overflow.",
+        fix: "Use calloc(n, size) which checks for overflow, or validate n * size before malloc.",
+        languages: &["c", "cpp"],
+        taint_aware: false,
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // P0: Swift/iOS SAST (CWE-918, CWE-22, CWE-312, CWE-502, CWE-79)
+    // ══════════════════════════════════════════════════════════════════
+
+    SastRule {
+        id: "SWIFT-001", cwe: 918, severity: Severity::High,
+        category: "SSRF",
+        pattern: "urlsession",
+        requires: Some("url(string"),
+        suppressed_by: Some("allowlist"),
+        description: "URLSession with dynamic URL construction — SSRF if URL contains user input.",
+        fix: "Validate URLs against an allowlist. Use URLComponents to build URLs safely.",
+        languages: &["swift"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "SWIFT-002", cwe: 22, severity: Severity::High,
+        category: "Path Traversal",
+        pattern: "filemanager",
+        requires: Some("contentsoffile"),
+        suppressed_by: None,
+        description: "FileManager file read with potentially user-controlled path — path traversal risk.",
+        fix: "Sanitize paths: resolve symlinks, verify the path starts with the app sandbox directory.",
+        languages: &["swift"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "SWIFT-003", cwe: 312, severity: Severity::High,
+        category: "Insecure Storage",
+        pattern: "userdefaults",
+        requires: Some("password"),
+        suppressed_by: Some("keychain"),
+        description: "UserDefaults used to store passwords/tokens — data is stored in plaintext plist files.",
+        fix: "Use Keychain Services for sensitive data: SecItemAdd/SecItemCopyMatching.",
+        languages: &["swift"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SWIFT-004", cwe: 312, severity: Severity::Medium,
+        category: "Insecure Storage",
+        pattern: "userdefaults",
+        requires: Some("token"),
+        suppressed_by: Some("keychain"),
+        description: "UserDefaults used to store auth tokens — accessible by any tweak on jailbroken devices.",
+        fix: "Use Keychain with kSecAttrAccessibleWhenUnlockedThisDeviceOnly for auth tokens.",
+        languages: &["swift"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SWIFT-005", cwe: 502, severity: Severity::High,
+        category: "Insecure Deserialization",
+        pattern: "nskeyedunarchiver",
+        requires: None,
+        suppressed_by: Some("requiressecurecoding"),
+        description: "NSKeyedUnarchiver without secure coding — arbitrary object instantiation from untrusted data.",
+        fix: "Use NSSecureCoding: NSKeyedUnarchiver.unarchivedObject(ofClass:from:) with requiresSecureCoding = true.",
+        languages: &["swift"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SWIFT-006", cwe: 295, severity: Severity::Critical,
+        category: "TLS/SSL",
+        pattern: "allowsanyhtttps",
+        requires: None,
+        suppressed_by: None,
+        description: "App Transport Security (ATS) bypass — allows insecure HTTP connections.",
+        fix: "Remove NSAllowsArbitraryLoads from Info.plist. Use HTTPS with valid certificates.",
+        languages: &["swift"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SWIFT-007", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "loadhtmlstring",
+        requires: None,
+        suppressed_by: Some("sanitize"),
+        description: "WKWebView loadHTMLString with dynamic content — XSS if HTML contains user input.",
+        fix: "HTML-encode all user input before embedding in loadHTMLString. Use Content-Security-Policy.",
+        languages: &["swift"],
+        taint_aware: true,
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // P1: C#/.NET-specific SAST (CWE-918, CWE-502, CWE-78, CWE-89)
+    // ══════════════════════════════════════════════════════════════════
+
+    SastRule {
+        id: "CS-001", cwe: 918, severity: Severity::High,
+        category: "SSRF",
+        pattern: "httpclient",
+        requires: Some("getasync"),
+        suppressed_by: Some("allowlist"),
+        description: "HttpClient.GetAsync with user-controlled URL — SSRF to internal services.",
+        fix: "Validate URLs against an allowlist. Block private IP ranges (10.x, 172.16-31.x, 192.168.x).",
+        languages: &["cs"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "CS-002", cwe: 502, severity: Severity::Critical,
+        category: "Insecure Deserialization",
+        pattern: "binaryformatter",
+        requires: None,
+        suppressed_by: None,
+        description: "BinaryFormatter deserializes arbitrary types — RCE via crafted payload. Deprecated in .NET 5+.",
+        fix: "Use System.Text.Json or JsonSerializer. BinaryFormatter is fundamentally insecure.",
+        languages: &["cs"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CS-003", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "process.start",
+        requires: None,
+        suppressed_by: None,
+        description: "Process.Start with user input — command injection if arguments are not sanitized.",
+        fix: "Use ProcessStartInfo with UseShellExecute=false and pass arguments as separate parameters.",
+        languages: &["cs"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "CS-004", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "sqlcommand",
+        requires: Some("+"),
+        suppressed_by: Some("parameters"),
+        description: "SqlCommand with string concatenation — SQL injection in ADO.NET.",
+        fix: "Use SqlParameter: cmd.Parameters.AddWithValue(\"@id\", userId).",
+        languages: &["cs"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "CS-005", cwe: 1333, severity: Severity::Medium,
+        category: "ReDoS",
+        pattern: "new regex(",
+        requires: Some("req"),
+        suppressed_by: Some("timeout"),
+        description: "Regex constructed from user input — ReDoS (catastrophic backtracking) in .NET regex engine.",
+        fix: "Use Regex with RegexOptions.NonBacktracking (.NET 7+) or set MatchTimeout.",
+        languages: &["cs"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "CS-006", cwe: 502, severity: Severity::High,
+        category: "Insecure Deserialization",
+        pattern: "jsonconvert.deserializeobject",
+        requires: Some("typenamehandling"),
+        suppressed_by: None,
+        description: "Newtonsoft.Json with TypeNameHandling — RCE via polymorphic deserialization gadgets.",
+        fix: "Use TypeNameHandling.None (default) or use System.Text.Json which has no type name handling.",
+        languages: &["cs"],
+        taint_aware: false,
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // P2: PHP SAST (CWE-89, CWE-78, CWE-94, CWE-98, CWE-79)
+    // ══════════════════════════════════════════════════════════════════
+
+    SastRule {
+        id: "PHP-001", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "mysql_query(",
+        requires: Some("$_"),
+        suppressed_by: Some("prepared"),
+        description: "mysql_query with superglobal ($_GET/$_POST) — direct SQL injection.",
+        fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?');",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-002", cwe: 89, severity: Severity::Critical,
+        category: "SQL Injection",
+        pattern: "->query(",
+        requires: Some("$_"),
+        suppressed_by: Some("prepare"),
+        description: "mysqli->query with user input — SQL injection via string interpolation.",
+        fix: "Use $stmt = $mysqli->prepare('...'); $stmt->bind_param('s', $param);",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-003", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "exec(",
+        requires: Some("$_"),
+        suppressed_by: Some("escapeshellarg"),
+        description: "exec() with user input — shell command injection.",
+        fix: "Use escapeshellarg() on each argument. Better: avoid exec() and use PHP-native alternatives.",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-004", cwe: 78, severity: Severity::Critical,
+        category: "Command Injection",
+        pattern: "system(",
+        requires: Some("$_"),
+        suppressed_by: Some("escapeshellarg"),
+        description: "system() with user input — direct shell command injection.",
+        fix: "Use escapeshellarg() + escapeshellcmd(). Prefer PHP-native functions over shell commands.",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-005", cwe: 94, severity: Severity::Critical,
+        category: "Code Injection",
+        pattern: "eval(",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "eval() executes arbitrary PHP — code injection if input contains user data.",
+        fix: "Never use eval(). Restructure code to use arrays, callbacks, or proper templating.",
+        languages: &["php"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "PHP-006", cwe: 98, severity: Severity::Critical,
+        category: "File Inclusion",
+        pattern: "include(",
+        requires: Some("$_"),
+        suppressed_by: None,
+        description: "include() with user-controlled path — Local/Remote File Inclusion (LFI/RFI).",
+        fix: "Use a whitelist of allowed files. Never pass user input to include/require.",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-007", cwe: 98, severity: Severity::Critical,
+        category: "File Inclusion",
+        pattern: "require(",
+        requires: Some("$_"),
+        suppressed_by: None,
+        description: "require() with user-controlled path — Local/Remote File Inclusion.",
+        fix: "Use a whitelist of allowed files. Never pass user input to include/require.",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-008", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "echo $_",
+        requires: None,
+        suppressed_by: Some("htmlspecialchars"),
+        description: "Echoing superglobal directly — reflected XSS vulnerability.",
+        fix: "Always escape output: echo htmlspecialchars($_GET['input'], ENT_QUOTES, 'UTF-8');",
+        languages: &["php"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "PHP-009", cwe: 502, severity: Severity::High,
+        category: "Insecure Deserialization",
+        pattern: "unserialize(",
+        requires: None,
+        suppressed_by: Some("allowed_classes"),
+        description: "unserialize() instantiates arbitrary objects — RCE via PHP object injection (POP chains).",
+        fix: "Use json_decode() for data. If unserialize is required, pass ['allowed_classes' => false].",
+        languages: &["php"],
+        taint_aware: false,
+    },
+
+    // ══════════════════════════════════════════════════════════════════
+    // Frontend Framework SAST: Vue / Angular / Svelte / HTML Templates
+    // (CWE-79, CWE-94, CWE-116)
+    // ══════════════════════════════════════════════════════════════════
+
+    // ── Vue.js XSS ────────────────────────────────────────────────────
+    SastRule {
+        id: "VUE-001", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "v-html",
+        requires: None,
+        suppressed_by: Some("sanitize"),
+        description: "Vue v-html directive renders raw HTML — XSS if bound to user-controlled data.",
+        fix: "Use {{ interpolation }} for text content (auto-escaped). If v-html is needed, sanitize with DOMPurify first.",
+        languages: &["vue", "js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "VUE-002", cwe: 601, severity: Severity::Medium,
+        category: "Open Redirect",
+        pattern: "v-bind:href",
+        requires: None,
+        suppressed_by: Some("allowlist"),
+        description: "Vue dynamic href binding — open redirect or javascript: URI XSS if user-controlled.",
+        fix: "Validate URLs against an allowlist. Block javascript: and data: URI schemes.",
+        languages: &["vue", "js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "VUE-003", cwe: 79, severity: Severity::Medium,
+        category: "XSS",
+        pattern: ":href",
+        requires: Some("$route"),
+        suppressed_by: Some("sanitize"),
+        description: "Vue dynamic href with route parameter — XSS via crafted route params.",
+        fix: "Validate route parameters before binding to href. Use router-link component instead.",
+        languages: &["vue", "js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "VUE-004", cwe: 94, severity: Severity::Critical,
+        category: "Template Injection",
+        pattern: "v-bind:is",
+        requires: None,
+        suppressed_by: None,
+        description: "Vue dynamic component with v-bind:is — component injection if value is user-controlled.",
+        fix: "Whitelist allowed component names. Never pass user input directly to :is binding.",
+        languages: &["vue", "js", "ts"],
+        taint_aware: false,
+    },
+
+    // ── Angular XSS / Template Injection ──────────────────────────────
+    SastRule {
+        id: "NG-001", cwe: 79, severity: Severity::Critical,
+        category: "XSS",
+        pattern: "bypasssecuritytrust",
+        requires: None,
+        suppressed_by: None,
+        description: "Angular DomSanitizer bypass — disables Angular's built-in XSS protection.",
+        fix: "Avoid bypassSecurityTrust*. If needed, sanitize input with DOMPurify BEFORE bypassing.",
+        languages: &["ts", "js"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "NG-002", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "[innerhtml]",
+        requires: None,
+        suppressed_by: Some("sanitize"),
+        description: "Angular [innerHTML] binding — bypasses template auto-escaping.",
+        fix: "Use Angular's built-in sanitization or DomSanitizer. Prefer text interpolation {{ }} for text content.",
+        languages: &["ts", "js", "html"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "NG-003", cwe: 94, severity: Severity::Critical,
+        category: "Template Injection",
+        pattern: "$compile(",
+        requires: None,
+        suppressed_by: None,
+        description: "AngularJS $compile with user input — server-side template injection (SSTI) in AngularJS.",
+        fix: "Never $compile user-controlled strings. Migrate from AngularJS to Angular (v2+) which doesn't have $compile.",
+        languages: &["js", "ts"],
+        taint_aware: true,
+    },
+    SastRule {
+        id: "NG-004", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "ng-bind-html",
+        requires: None,
+        suppressed_by: Some("$sce"),
+        description: "AngularJS ng-bind-html renders raw HTML — XSS if content is user-controlled.",
+        fix: "Use $sce.trustAsHtml() only with sanitized content. Prefer ng-bind for text.",
+        languages: &["html", "js"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "NG-005", cwe: 79, severity: Severity::Medium,
+        category: "XSS",
+        pattern: "elementref",
+        requires: Some("nativeelement"),
+        suppressed_by: None,
+        description: "Angular ElementRef.nativeElement direct DOM access — bypasses Angular's sanitization.",
+        fix: "Use Renderer2 instead of direct DOM access via ElementRef.nativeElement.",
+        languages: &["ts"],
+        taint_aware: false,
+    },
+
+    // ── Svelte XSS ────────────────────────────────────────────────────
+    SastRule {
+        id: "SVELTE-001", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "{@html",
+        requires: None,
+        suppressed_by: Some("sanitize"),
+        description: "Svelte {@html} tag renders raw HTML — XSS if content is user-controlled.",
+        fix: "Sanitize with DOMPurify before {@html}: {@html DOMPurify.sanitize(content)}",
+        languages: &["svelte", "js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "SVELTE-002", cwe: 79, severity: Severity::Medium,
+        category: "XSS",
+        pattern: "bind:innerhtml",
+        requires: None,
+        suppressed_by: Some("sanitize"),
+        description: "Svelte bind:innerHTML — two-way binding with raw HTML, XSS risk.",
+        fix: "Avoid bind:innerHTML. Use textContent binding or sanitize HTML content.",
+        languages: &["svelte"],
+        taint_aware: false,
+    },
+
+    // ── HTML Template Security ────────────────────────────────────────
+    SastRule {
+        id: "HTML-001", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "onerror=",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "Inline onerror handler — classic XSS vector in HTML templates.",
+        fix: "Remove inline event handlers. Use addEventListener() in JavaScript instead.",
+        languages: &["html", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "HTML-002", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "onclick=",
+        requires: Some("\""),
+        suppressed_by: None,
+        description: "Inline onclick with dynamic content — XSS if value contains user input.",
+        fix: "Remove inline handlers. Use addEventListener() with proper escaping.",
+        languages: &["html"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "HTML-003", cwe: 79, severity: Severity::Critical,
+        category: "XSS",
+        pattern: "javascript:",
+        requires: None,
+        suppressed_by: Some("test"),
+        description: "javascript: URI scheme — direct XSS execution vector in href/src attributes.",
+        fix: "Never use javascript: URIs. Use event listeners or proper navigation patterns.",
+        languages: &["html", "js", "ts", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "HTML-004", cwe: 16, severity: Severity::Medium,
+        category: "Security Misconfiguration",
+        pattern: "target=\"_blank\"",
+        requires: None,
+        suppressed_by: Some("noopener"),
+        description: "target=\"_blank\" without rel=\"noopener\" — tabnabbing vulnerability.",
+        fix: "Add rel=\"noopener noreferrer\" to all target=\"_blank\" links.",
+        languages: &["html", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "HTML-005", cwe: 346, severity: Severity::Medium,
+        category: "Security Misconfiguration",
+        pattern: "allow=\"*\"",
+        requires: Some("iframe"),
+        suppressed_by: None,
+        description: "iframe with unrestricted allow policy — grants embedded page full permissions.",
+        fix: "Restrict iframe permissions: allow=\"camera; microphone\" and add sandbox attribute.",
+        languages: &["html", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "HTML-006", cwe: 79, severity: Severity::High,
+        category: "XSS",
+        pattern: "srcdoc=",
+        requires: None,
+        suppressed_by: Some("sandbox"),
+        description: "iframe srcdoc with dynamic content — XSS if HTML is user-controlled.",
+        fix: "Sanitize srcdoc content with DOMPurify. Add sandbox attribute to restrict capabilities.",
+        languages: &["html", "vue", "svelte", "js", "ts"],
+        taint_aware: false,
+    },
+
+    // ── CSS Injection (CWE-79 via CSS) ────────────────────────────────
+    SastRule {
+        id: "CSS-001", cwe: 79, severity: Severity::Critical,
+        category: "CSS Injection",
+        pattern: "expression(",
+        requires: None,
+        suppressed_by: None,
+        description: "CSS expression() — executes JavaScript in IE. Legacy but still exploitable.",
+        fix: "Remove CSS expression(). Use JavaScript event handlers or CSS animations instead.",
+        languages: &["css", "html", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CSS-002", cwe: 79, severity: Severity::Critical,
+        category: "CSS Injection",
+        pattern: "url(javascript:",
+        requires: None,
+        suppressed_by: None,
+        description: "CSS url() with javascript: scheme — XSS via CSS properties (background, list-style).",
+        fix: "Never use javascript: in CSS url(). Use only https:// or relative paths.",
+        languages: &["css", "html", "vue", "svelte"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CSS-003", cwe: 79, severity: Severity::High,
+        category: "CSS Injection",
+        pattern: "-moz-binding",
+        requires: None,
+        suppressed_by: None,
+        description: "-moz-binding can load XBL bindings with JavaScript — XSS in Firefox.",
+        fix: "Remove -moz-binding. It is deprecated and a known XSS vector.",
+        languages: &["css", "html"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CSS-004", cwe: 79, severity: Severity::High,
+        category: "CSS Injection",
+        pattern: "behavior:",
+        requires: Some("url("),
+        suppressed_by: None,
+        description: "CSS behavior property loads HTC files with JavaScript — XSS in IE.",
+        fix: "Remove behavior property. Use modern CSS and JavaScript alternatives.",
+        languages: &["css", "html"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "CSS-005", cwe: 79, severity: Severity::Medium,
+        category: "CSS Injection",
+        pattern: "style=",
+        requires: Some("${"),
+        suppressed_by: Some("sanitize"),
+        description: "Inline style with template interpolation — CSS injection if user-controlled.",
+        fix: "Use CSS-in-JS libraries with auto-escaping, or sanitize style values against an allowlist.",
+        languages: &["js", "ts", "html", "vue", "svelte"],
+        taint_aware: false,
+    },
+
+    // ── Frontend Framework Config Security ─────────────────────────────
+    SastRule {
+        id: "FE-001", cwe: 352, severity: Severity::High,
+        category: "CSRF",
+        pattern: "withcredentials",
+        requires: Some("true"),
+        suppressed_by: Some("csrf"),
+        description: "Cross-origin request with credentials — CSRF if target doesn't validate origin.",
+        fix: "Implement CSRF tokens. Validate Origin/Referer headers. Use SameSite cookies.",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "FE-002", cwe: 922, severity: Severity::High,
+        category: "Insecure Storage",
+        pattern: "localstorage.setitem",
+        requires: Some("token"),
+        suppressed_by: None,
+        description: "Auth token stored in localStorage — accessible via XSS, never expires.",
+        fix: "Store tokens in httpOnly cookies (immune to XSS). Use sessionStorage for session-scoped data.",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "FE-003", cwe: 922, severity: Severity::High,
+        category: "Insecure Storage",
+        pattern: "localstorage.setitem",
+        requires: Some("password"),
+        suppressed_by: None,
+        description: "Password stored in localStorage — plaintext credential exposure via XSS.",
+        fix: "Never store passwords client-side. Use server-side session management.",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "FE-004", cwe: 319, severity: Severity::Medium,
+        category: "Insecure Transport",
+        pattern: "postmessage(",
+        requires: Some("*"),
+        suppressed_by: Some("origin"),
+        description: "postMessage with '*' origin — any window can receive sensitive data.",
+        fix: "Specify exact target origin: window.postMessage(data, 'https://trusted.com')",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
+    SastRule {
+        id: "FE-005", cwe: 346, severity: Severity::High,
+        category: "Origin Validation",
+        pattern: "addeventlistener",
+        requires: Some("message"),
+        suppressed_by: Some("origin"),
+        description: "Window message listener without origin check — any page can send messages.",
+        fix: "Always validate event.origin: if (event.origin !== 'https://trusted.com') return;",
+        languages: &["js", "ts"],
+        taint_aware: false,
+    },
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -748,12 +1886,26 @@ static RULES: &[SastRule] = &[
 
 fn detect_lang(source: &str) -> Option<&'static str> {
     let lower = source.to_lowercase();
+    let basename = lower.rsplit(['/', '\\']).next().unwrap_or(&lower);
     if lower.ends_with(".py") || lower.ends_with(".pyw") { Some("py") }
     else if lower.ends_with(".rs") { Some("rs") }
-    else if lower.ends_with(".js") || lower.ends_with(".jsx") || lower.ends_with(".mjs") { Some("js") }
-    else if lower.ends_with(".ts") || lower.ends_with(".tsx") { Some("ts") }
-    else if lower.ends_with(".java") { Some("java") }
+    else if lower.ends_with(".js") || lower.ends_with(".jsx") || lower.ends_with(".mjs") || lower.ends_with(".cjs") { Some("js") }
+    else if lower.ends_with(".ts") || lower.ends_with(".tsx") || lower.ends_with(".mts") || lower.ends_with(".cts") { Some("ts") }
+    else if lower.ends_with(".go") { Some("go") }
+    else if lower.ends_with(".java") || lower.ends_with(".kt") { Some("java") }
+    else if lower.ends_with(".cs") || lower.ends_with(".csx") { Some("cs") }
+    else if lower.ends_with(".swift") { Some("swift") }
+    else if lower.ends_with(".c") || lower.ends_with(".h") { Some("c") }
+    else if lower.ends_with(".cpp") || lower.ends_with(".cc") || lower.ends_with(".hpp") || lower.ends_with(".hxx") { Some("cpp") }
     else if lower.ends_with(".php") { Some("php") }
+    else if lower.ends_with(".rb") { Some("rb") }
+    else if lower.ends_with(".sh") || lower.ends_with(".bash") || lower.ends_with(".zsh") { Some("sh") }
+    else if basename.starts_with("dockerfile") { Some("dockerfile") }
+    else if lower.ends_with(".tf") || lower.ends_with(".hcl") { Some("tf") }
+    else if lower.ends_with(".vue") { Some("vue") }
+    else if lower.ends_with(".svelte") { Some("svelte") }
+    else if lower.ends_with(".html") || lower.ends_with(".htm") { Some("html") }
+    else if lower.ends_with(".css") || lower.ends_with(".scss") || lower.ends_with(".less") { Some("css") }
     else { None }
 }
 
@@ -762,7 +1914,18 @@ fn rule_applies(rule: &SastRule, lang: Option<&str>) -> bool {
         return true;
     }
     match lang {
-        Some(l) => rule.languages.contains(&l),
+        Some(l) => {
+            if rule.languages.contains(&l) { return true; }
+            // C# is structurally similar to Java — Java rules also apply
+            if l == "cs" && rule.languages.contains(&"java") { return true; }
+            // C files match C++ rules (C++ is a superset of C for security purposes)
+            if l == "c" && rule.languages.contains(&"cpp") { return true; }
+            // Bash is a superset of sh
+            if l == "bash" && rule.languages.contains(&"sh") { return true; }
+            // Vue/Svelte SFCs embed JavaScript — JS/TS rules apply
+            if (l == "vue" || l == "svelte") && (rule.languages.contains(&"js") || rule.languages.contains(&"ts")) { return true; }
+            false
+        }
         None => false,
     }
 }
@@ -773,9 +1936,9 @@ fn rule_applies(rule: &SastRule, lang: Option<&str>) -> bool {
 /// that erode trust in the dashboard.
 fn is_non_code_file(source: &str) -> bool {
     let lower = source.to_lowercase();
+    // Note: .html, .css are NOT non-code — they have dedicated SAST rules
     lower.ends_with(".md") || lower.ends_with(".txt") || lower.ends_with(".rst")
-        || lower.ends_with(".html") || lower.ends_with(".htm")
-        || lower.ends_with(".css") || lower.ends_with(".svg")
+        || lower.ends_with(".svg")
         || lower.ends_with(".xml") || lower.ends_with(".json")
         || lower.ends_with(".yaml") || lower.ends_with(".yml")
         || lower.ends_with(".toml") || lower.ends_with(".cfg")
@@ -798,6 +1961,29 @@ static TAINT_SOURCES: &[&str] = &[
     "environ.get(", "getenv(",
     "document.", "location.", "window.location",
     "event.target.value", "e.target.value",
+    // Node.js / Express / Koa / Fastify
+    "req.body", "req.query", "req.params", "req.headers",
+    "ctx.request", "ctx.params", "ctx.query",
+    "process.argv",
+    // C/C++ — command-line and environment input
+    "argv[", "argv)", "argc", "getenv(", "fgets(",
+    "fread(", "recv(", "recvfrom(", "read(",
+    "scanf(", "gets(", "getline(",
+    // PHP superglobals — all user-controlled
+    "$_get", "$_post", "$_request", "$_cookie", "$_server",
+    "$_files", "$_env", "$_session",
+    // C# / .NET — request input
+    "request.query", "request.form", "request.body",
+    "request.headers", "httpcontext",
+    // Java — servlet request
+    "getparameter(", "getquerystring(", "getheader(",
+    "getinputstream(", "getreader(",
+    // Swift/iOS — URL and user input
+    "urlcomponents", "url(string", "uipasteboard",
+    "uitextfield", "uidocumentpicker",
+    // Go — request input
+    "r.formvalue(", "r.url.query(", "r.body",
+    "r.header.get(", "r.postform",
 ];
 
 static TAINT_PROPAGATORS: &[&str] = &[
@@ -848,6 +2034,13 @@ fn extract_assignment_lhs(line: &str) -> Option<String> {
             let lhs = trimmed[..i].trim();
             // Strip type annotation if present (Python: `var: Type`)
             let var_name = lhs.split(':').next()?.trim();
+            // Strip common language prefixes: var, let, const, auto, char*, int, etc.
+            // Take the LAST whitespace-separated token as the variable name
+            let var_name = var_name.split_whitespace().last().unwrap_or(var_name);
+            // Strip pointer/reference markers (C/C++: *ptr, &ref)
+            let var_name = var_name.trim_start_matches(['*', '&']);
+            // Strip PHP $ prefix for matching purposes
+            let var_name = var_name.trim_start_matches('$');
             // Only return simple identifiers
             if var_name.chars().all(|c| c.is_alphanumeric() || c == '_') && !var_name.is_empty() {
                 return Some(var_name.to_ascii_lowercase());
@@ -1443,5 +2636,246 @@ result = os.system(sanitized)
         let report = scan(code, "setup.md");
         assert!(report.findings.iter().any(|f| f.cwe == 798),
             "Hardcoded secrets should still be flagged in markdown files");
+    }
+
+    // ── P0: C/C++ SAST ──────────────────────────────────────────────
+
+    #[test]
+    fn test_cpp_buffer_overflow_strcpy() {
+        let code = r#"void copy_name(char *dst, const char *src) { strcpy(dst, src); }"#;
+        let report = scan(code, "util.c");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CPP-001"),
+            "Should detect strcpy buffer overflow");
+    }
+
+    #[test]
+    fn test_cpp_gets() {
+        let code = r#"void read_input() { char buf[64]; gets(buf); }"#;
+        let report = scan(code, "input.c");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CPP-002"),
+            "Should detect gets()");
+    }
+
+    #[test]
+    fn test_cpp_system_injection() {
+        // Multi-line with taint source: argv flows into system()
+        let code = "int main(int argc, char* argv[]) {\n    char* cmd = argv[1];\n    system(cmd);\n}";
+        let report = scan(code, "exec.cpp");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CPP-008"),
+            "Should detect system() command injection, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_cpp_format_string() {
+        // printf with argv on the same line — direct taint source + sink
+        let code = "int main(int argc, char* argv[]) {\n    printf(argv[1]);\n}";
+        let report = scan(code, "fmt.c");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CPP-006"),
+            "Should detect printf format string with argv, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_c_inherits_cpp_rules() {
+        // .c files should match CPP-* rules via rule_applies inheritance
+        let code = r#"void copy(char *d) { strcpy(d, "hello"); }"#;
+        let report = scan(code, "copy.c");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CPP-001"),
+            ".c files should match CPP rules");
+    }
+
+    // ── P0: Swift SAST ──────────────────────────────────────────────
+
+    #[test]
+    fn test_swift_userdefaults_password() {
+        let code = r#"UserDefaults.standard.set(password, forKey: "password")"#;
+        let report = scan(code, "auth.swift");
+        assert!(report.findings.iter().any(|f| f.rule_id == "SWIFT-003"),
+            "Should detect password storage in UserDefaults");
+    }
+
+    #[test]
+    fn test_swift_nscoding_deserialization() {
+        let code = r#"let obj = NSKeyedUnarchiver.unarchiveObject(with: data)"#;
+        let report = scan(code, "decode.swift");
+        assert!(report.findings.iter().any(|f| f.rule_id == "SWIFT-005"),
+            "Should detect NSKeyedUnarchiver");
+    }
+
+    // ── P1: C# SAST ────────────────────────────────────────────────
+
+    #[test]
+    fn test_cs_binaryformatter() {
+        let code = r#"var obj = new BinaryFormatter().Deserialize(stream);"#;
+        let report = scan(code, "loader.cs");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CS-002"),
+            "Should detect BinaryFormatter deserialization");
+    }
+
+    #[test]
+    fn test_cs_process_start() {
+        // Taint: Request.Query flows into Process.Start
+        let code = "var userInput = Request.Query[\"cmd\"];\nProcess.Start(\"cmd.exe\", userInput);";
+        let report = scan(code, "run.cs");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CS-003"),
+            "Should detect Process.Start injection, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_cs_sql_injection() {
+        // Taint: Request.Form flows into SqlCommand
+        let code = "var userId = Request.Form[\"id\"];\nvar cmd = new SqlCommand(\"SELECT * FROM users WHERE id=\" + userId);";
+        let report = scan(code, "data.cs");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CS-004"),
+            "Should detect SqlCommand SQL injection, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    // ── P2: PHP SAST ────────────────────────────────────────────────
+
+    #[test]
+    fn test_php_eval() {
+        let code = r#"eval($code);"#;
+        let report = scan(code, "handler.php");
+        assert!(report.findings.iter().any(|f| f.rule_id == "PHP-005"),
+            "Should detect PHP eval()");
+    }
+
+    #[test]
+    fn test_php_sql_injection() {
+        // Taint: $_GET superglobal is a direct taint source
+        let code = "$id = $_GET['id'];\n$result = mysql_query(\"SELECT * FROM users WHERE id=\" . $_GET['id']);";
+        let report = scan(code, "query.php");
+        assert!(report.findings.iter().any(|f| f.rule_id == "PHP-001"),
+            "Should detect mysql_query SQL injection, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_php_xss() {
+        // Taint: $_GET is a direct taint source on the echo line
+        let code = "$name = $_GET['name'];\necho $_GET['name'];";
+        let report = scan(code, "view.php");
+        assert!(report.findings.iter().any(|f| f.rule_id == "PHP-008"),
+            "Should detect reflected XSS via echo, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_php_unserialize() {
+        let code = r#"$obj = unserialize($data);"#;
+        let report = scan(code, "cache.php");
+        assert!(report.findings.iter().any(|f| f.rule_id == "PHP-009"),
+            "Should detect insecure unserialize");
+    }
+
+    // ── Frontend Framework SAST ─────────────────────────────────────
+
+    #[test]
+    fn test_vue_v_html() {
+        let code = r#"<div v-html="userContent"></div>"#;
+        let report = scan(code, "component.vue");
+        assert!(report.findings.iter().any(|f| f.rule_id == "VUE-001"),
+            "Should detect v-html XSS, findings: {:?}",
+            report.findings.iter().map(|f| &f.rule_id).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_angular_bypass_security() {
+        let code = r#"this.sanitizer.bypassSecurityTrustHtml(userInput);"#;
+        let report = scan(code, "component.ts");
+        assert!(report.findings.iter().any(|f| f.rule_id == "NG-001"),
+            "Should detect Angular DomSanitizer bypass");
+    }
+
+    #[test]
+    fn test_angular_innerhtml_binding() {
+        let code = r#"<div [innerHTML]="rawHtml"></div>"#;
+        let report = scan(code, "template.html");
+        assert!(report.findings.iter().any(|f| f.rule_id == "NG-002"),
+            "Should detect Angular [innerHTML] binding");
+    }
+
+    #[test]
+    fn test_svelte_html_tag() {
+        let code = r#"{@html content}"#;
+        let report = scan(code, "page.svelte");
+        assert!(report.findings.iter().any(|f| f.rule_id == "SVELTE-001"),
+            "Should detect Svelte {{@html}} XSS");
+    }
+
+    #[test]
+    fn test_html_javascript_uri() {
+        let code = r#"<a href="javascript:alert(1)">click</a>"#;
+        let report = scan(code, "page.html");
+        assert!(report.findings.iter().any(|f| f.rule_id == "HTML-003"),
+            "Should detect javascript: URI");
+    }
+
+    #[test]
+    fn test_css_expression() {
+        let code = r#"div { width: expression(document.body.clientWidth); }"#;
+        let report = scan(code, "styles.css");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CSS-001"),
+            "Should detect CSS expression()");
+    }
+
+    #[test]
+    fn test_css_javascript_url() {
+        let code = r#"div { background: url(javascript:alert(1)); }"#;
+        let report = scan(code, "styles.css");
+        assert!(report.findings.iter().any(|f| f.rule_id == "CSS-002"),
+            "Should detect CSS url(javascript:)");
+    }
+
+    #[test]
+    fn test_localstorage_token() {
+        let code = r#"localStorage.setItem('token', authResponse.token);"#;
+        let report = scan(code, "auth.ts");
+        assert!(report.findings.iter().any(|f| f.rule_id == "FE-002"),
+            "Should detect token in localStorage");
+    }
+
+    #[test]
+    fn test_postmessage_star_origin() {
+        let code = r#"window.postMessage(sensitiveData, '*');"#;
+        let report = scan(code, "iframe.ts");
+        assert!(report.findings.iter().any(|f| f.rule_id == "FE-004"),
+            "Should detect postMessage with * origin");
+    }
+
+    #[test]
+    fn test_target_blank_without_noopener() {
+        let code = r#"<a href="https://evil.com" target="_blank">Link</a>"#;
+        let report = scan(code, "nav.html");
+        assert!(report.findings.iter().any(|f| f.rule_id == "HTML-004"),
+            "Should detect target=_blank without noopener");
+    }
+
+    #[test]
+    fn test_target_blank_with_noopener_suppressed() {
+        let code = r#"<a href="https://safe.com" target="_blank" rel="noopener noreferrer">Link</a>"#;
+        let report = scan(code, "nav.html");
+        assert!(!report.findings.iter().any(|f| f.rule_id == "HTML-004"),
+            "Should NOT flag target=_blank when noopener is present");
+    }
+
+    #[test]
+    fn test_vue_file_detects_js_rules() {
+        // Vue files should also match JS/TS rules via inheritance
+        let code = r#"document.getElementById("app").innerHTML = data"#;
+        let report = scan(code, "handler.vue");
+        assert!(report.findings.iter().any(|f| f.rule_id == "XSS-001"),
+            "Vue files should inherit JS XSS rules");
+    }
+
+    #[test]
+    fn test_html_onerror_xss() {
+        let code = r#"<img src="x" onerror="alert(1)">"#;
+        let report = scan(code, "page.html");
+        assert!(report.findings.iter().any(|f| f.rule_id == "HTML-001"),
+            "Should detect inline onerror handler");
     }
 }

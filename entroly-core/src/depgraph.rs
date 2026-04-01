@@ -52,6 +52,8 @@ pub enum DepType {
     SameModule,
     /// Source's tests test Target
     TestOf,
+    /// Cross-language FFI boundary (PyO3, JNI, CGo, WASM, N-API, C FFI)
+    CrossLanguageFFI,
 }
 
 /// The dependency graph.
@@ -63,6 +65,9 @@ pub struct DepGraph {
     incoming: HashMap<String, Vec<Dependency>>,
     /// All known symbols: "function_name" → fragment_id that defines it
     symbol_table: HashMap<String, String>,
+    /// Cross-language FFI exports: symbol → (fragment_id, bridge_type)
+    /// e.g. ("process", ("frag_rust_lib", "pyo3"))
+    cross_lang_exports: HashMap<String, (String, String)>,
 }
 
 impl DepGraph {
@@ -71,6 +76,7 @@ impl DepGraph {
             outgoing: HashMap::new(),
             incoming: HashMap::new(),
             symbol_table: HashMap::new(),
+            cross_lang_exports: HashMap::new(),
         }
     }
 
@@ -129,11 +135,35 @@ impl DepGraph {
         for def in &definitions {
             self.register_symbol(def, fragment_id);
         }
+
+        // Cross-language FFI: extract exported symbols and link across boundaries
+        let ffi_exports = Self::extract_ffi_exports(content);
+        for (symbol, bridge_type) in &ffi_exports {
+            self.cross_lang_exports.insert(
+                symbol.clone(),
+                (fragment_id.to_string(), bridge_type.clone()),
+            );
+            // Also register in the normal symbol table so imports resolve
+            self.register_symbol(symbol, fragment_id);
+        }
+
+        // Check if this fragment's imports match any cross-language export
+        for ident in &identifiers {
+            if let Some((export_frag, _bridge)) = self.cross_lang_exports.get(ident) {
+                if export_frag != fragment_id {
+                    self.add_dependency(Dependency {
+                        source_id: fragment_id.to_string(),
+                        target_id: export_frag.clone(),
+                        dep_type: DepType::CrossLanguageFFI,
+                        strength: 0.95,  // Very strong: cross-lang deps are critical context
+                    });
+                }
+            }
+        }
     }
 
     /// Extract symbols that are explicitly imported in source code.
-    /// Parses Python `from X import Y`, `import X`, Rust `use x::Y`,
-    /// and JS `import { Y } from`, `require('X')`.
+    /// Parses Python, Rust, JS/TS, Go, Java, C/C++, and Ruby imports.
     fn extract_import_targets(content: &str) -> HashSet<String> {
         let mut targets = HashSet::new();
         for line in content.lines() {
@@ -186,7 +216,7 @@ impl DepGraph {
                     }
                 }
             }
-            // JS/TS: import { foo, bar } from '...'
+            // JS/TS: import { foo, bar } from '...'  /  import React from '...'
             else if trimmed.starts_with("import ") {
                 if let Some(brace_start) = trimmed.find('{') {
                     if let Some(brace_end) = trimmed.find('}') {
@@ -198,10 +228,367 @@ impl DepGraph {
                             }
                         }
                     }
+                } else {
+                    // Default import: import React from 'react'
+                    let after_import = trimmed.trim_start_matches("import ");
+                    if let Some(name) = after_import.split_whitespace().next() {
+                        let clean = name.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                        if !clean.is_empty() && clean != "type" && clean != "*" {
+                            targets.insert(clean.to_string());
+                        }
+                    }
                 }
+            }
+            // JS/TS: const foo = require('module')
+            else if trimmed.contains("require(") {
+                if let Some(var) = extract_require_lhs(trimmed) {
+                    targets.insert(var);
+                }
+            }
+            // Go: import "fmt" / import alias "pkg/path"
+            // Also handles import block:  import ( "fmt"\n "net/http" )
+            else if trimmed.starts_with("import ") && trimmed.contains('"') {
+                // Single-line: import "fmt" or import http "net/http"
+                for segment in trimmed.split('"') {
+                    let seg = segment.trim();
+                    if !seg.is_empty() && !seg.starts_with("import") && !seg.starts_with("(") {
+                        // Use the last path component: "net/http" → "http"
+                        let last = seg.rsplit('/').next().unwrap_or(seg);
+                        if !last.is_empty() {
+                            targets.insert(last.to_string());
+                        }
+                    }
+                }
+            }
+            // Go import block lines: "fmt" or alias "pkg/path"
+            else if trimmed.starts_with('"') && trimmed.ends_with('"') {
+                let pkg = trimmed.trim_matches('"');
+                let last = pkg.rsplit('/').next().unwrap_or(pkg);
+                if !last.is_empty() {
+                    targets.insert(last.to_string());
+                }
+            }
+            // Java/Kotlin: import com.example.ClassName;
+            else if trimmed.starts_with("import ") && trimmed.contains('.') && trimmed.ends_with(';') {
+                let path = trimmed.trim_start_matches("import ")
+                    .trim_start_matches("static ")
+                    .trim_end_matches(';')
+                    .trim();
+                if path.ends_with(".*") {
+                    // Wildcard import — use the package name
+                    let pkg = path.trim_end_matches(".*").rsplit('.').next().unwrap_or("");
+                    if !pkg.is_empty() {
+                        targets.insert(pkg.to_string());
+                    }
+                } else {
+                    let class = path.rsplit('.').next().unwrap_or(path);
+                    if !class.is_empty() {
+                        targets.insert(class.to_string());
+                    }
+                }
+            }
+            // C/C++: #include <header> or #include "header"
+            else if trimmed.starts_with("#include") {
+                let after = trimmed.trim_start_matches("#include").trim();
+                let header = after.trim_matches(|c: char| c == '<' || c == '>' || c == '"');
+                // "stdio.h" → "stdio", "vector" → "vector", "boost/asio.hpp" → "asio"
+                let last = header.rsplit('/').next().unwrap_or(header);
+                let name = last.split('.').next().unwrap_or(last);
+                if !name.is_empty() {
+                    targets.insert(name.to_string());
+                }
+            }
+            // Ruby: require 'module' / require_relative 'path'
+            else if trimmed.starts_with("require ") || trimmed.starts_with("require_relative ") {
+                let after = if trimmed.starts_with("require_relative") {
+                    trimmed.trim_start_matches("require_relative").trim()
+                } else {
+                    trimmed.trim_start_matches("require").trim()
+                };
+                let module = after.trim_matches(|c: char| c == '\'' || c == '"');
+                let last = module.rsplit('/').next().unwrap_or(module);
+                if !last.is_empty() {
+                    targets.insert(last.to_string());
+                }
+            }
+            // C#: using Namespace.Class;
+            else if trimmed.starts_with("using ") && trimmed.ends_with(';') {
+                let path = trimmed.trim_start_matches("using ")
+                    .trim_start_matches("static ")
+                    .trim_end_matches(';')
+                    .trim();
+                if !path.contains(' ') {  // skip "using var x = ..."
+                    let last = path.rsplit('.').next().unwrap_or(path);
+                    if !last.is_empty() {
+                        targets.insert(last.to_string());
+                    }
+                }
+            }
+            // Swift: import Module
+            else if trimmed.starts_with("import ") && !trimmed.contains('{')
+                && !trimmed.contains('"') && !trimmed.contains('\'')
+            {
+                let module = trimmed.trim_start_matches("import ").trim();
+                // "import Foundation" → "Foundation"
+                // "import class UIKit.UIView" → "UIView"
+                let last = module.rsplit('.').next()
+                    .unwrap_or(module)
+                    .rsplit_once(' ')
+                    .map(|(_, r)| r)
+                    .unwrap_or(module);
+                if !last.is_empty() {
+                    targets.insert(last.to_string());
+                }
+            }
+            // PHP: use App\Models\User;
+            else if trimmed.starts_with("use ") && trimmed.contains('\\') && trimmed.ends_with(';') {
+                let path = trimmed.trim_start_matches("use ")
+                    .trim_end_matches(';')
+                    .trim();
+                // Handle aliased: use App\Models\User as AppUser;
+                let effective = path.split(" as ").next().unwrap_or(path);
+                let last = effective.rsplit('\\').next().unwrap_or(effective);
+                if !last.is_empty() {
+                    targets.insert(last.to_string());
+                }
+            }
+
+            // ── HTML/Vue/Svelte: component and resource references ──
+            // <script src="..."> or <link href="...">
+            if (trimmed.contains("<script") || trimmed.contains("<link"))
+                && (trimmed.contains("src=") || trimmed.contains("href="))
+            {
+                // Extract path from src="..." or href="..."
+                for attr in &["src=\"", "href=\"", "src='", "href='"] {
+                    if let Some(start) = trimmed.find(attr) {
+                        let after = &trimmed[start + attr.len()..];
+                        let quote = if attr.ends_with('"') { '"' } else { '\'' };
+                        if let Some(end) = after.find(quote) {
+                            let path = &after[..end];
+                            // Extract filename without extension as symbol
+                            let name = path.rsplit('/').next().unwrap_or(path);
+                            let name = name.split('.').next().unwrap_or(name);
+                            if !name.is_empty() && name != "index" {
+                                targets.insert(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            // Vue/Svelte: component imports are standard JS (handled above)
+            // Angular: @Component({templateUrl: '...'})
+            if trimmed.contains("templateurl") || trimmed.contains("styleurls") {
+                for attr in &["templateurl:", "styleurls:"] {
+                    if let Some(start) = trimmed.to_lowercase().find(attr) {
+                        let after = &trimmed[start + attr.len()..];
+                        // Extract path from quotes
+                        if let Some(q1) = after.find('\'').or_else(|| after.find('"')) {
+                            let rest = &after[q1+1..];
+                            if let Some(q2) = rest.find('\'').or_else(|| rest.find('"')) {
+                                let path = &rest[..q2];
+                                let name = path.rsplit('/').next().unwrap_or(path).split('.').next().unwrap_or("");
+                                if !name.is_empty() {
+                                    targets.insert(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Cross-language FFI boundary detection ──────────────
+            // PyO3: Rust → Python bridge
+            if trimmed.contains("#[pyfunction]") || trimmed.contains("#[pyclass]")
+                || trimmed.contains("#[pymethods]") || trimmed.contains("pyo3::prelude")
+            {
+                targets.insert("__pyo3_bridge__".to_string());
+            }
+            // JNI: Java → C/C++ bridge
+            if trimmed.starts_with("native ") || trimmed.contains(" native ")
+                || trimmed.contains("System.loadLibrary")
+                || trimmed.contains("System.load(")
+            {
+                targets.insert("__jni_bridge__".to_string());
+            }
+            // JNI C-side: JNIEXPORT
+            if trimmed.contains("JNIEXPORT") || trimmed.contains("JNIEnv") {
+                targets.insert("__jni_bridge__".to_string());
+            }
+            // C FFI: extern "C" / ctypes / cffi / dlopen
+            if trimmed.contains("extern \"C\"") || trimmed.contains("extern \"c\"") {
+                targets.insert("__c_ffi__".to_string());
+            }
+            if trimmed.contains("ctypes.") || trimmed.contains("from ctypes")
+                || trimmed.contains("cffi") || trimmed.contains("dlopen")
+            {
+                targets.insert("__c_ffi__".to_string());
+            }
+            // CGo: import "C"
+            if trimmed == "import \"C\"" || trimmed.contains("/*\n#include") {
+                targets.insert("__cgo_bridge__".to_string());
+            }
+            // WASM: wasm_bindgen
+            if trimmed.contains("wasm_bindgen") || trimmed.contains("wasm-bindgen") {
+                targets.insert("__wasm_bridge__".to_string());
+            }
+            // Node.js N-API / neon
+            if trimmed.contains("napi::") || trimmed.contains("#[napi]")
+                || trimmed.contains("neon::prelude")
+            {
+                targets.insert("__node_native__".to_string());
             }
         }
         targets
+    }
+
+    /// Extract symbols exported across FFI boundaries.
+    ///
+    /// Detects:
+    ///   - **PyO3**: `#[pyfunction] fn process()` → exports "process"
+    ///   - **PyO3**: `#[pyclass] struct Engine` → exports "Engine"
+    ///   - **JNI**: `JNIEXPORT ... Java_com_example_Class_method` → exports "method"
+    ///   - **JNI (Java-side)**: `native void process()` → exports "process"
+    ///   - **CGo**: `//export ProcessData` → exports "ProcessData"
+    ///   - **WASM**: `#[wasm_bindgen] pub fn greet()` → exports "greet"
+    ///   - **N-API**: `#[napi] fn compute()` → exports "compute"
+    ///   - **C FFI**: `extern "C" fn handler()` → exports "handler"
+    ///   - **ctypes/cffi (Python)**: symbol loaded via ctypes/cffi
+    fn extract_ffi_exports(content: &str) -> Vec<(String, String)> {
+        let mut exports = Vec::new();
+        let lines: Vec<&str> = content.lines().collect();
+
+        for (i, line) in lines.iter().enumerate() {
+            let trimmed = line.trim();
+
+            // ── PyO3: #[pyfunction] / #[pyclass] ──────────────────────
+            // Pattern: #[pyfunction] on one line, fn name( on next
+            if trimmed.contains("#[pyfunction]") || trimmed.contains("#[pyo3(name") {
+                // Check same line: #[pyfunction] fn foo(
+                if let Some(name) = extract_fn_name_from_line(trimmed) {
+                    exports.push((name, "pyo3".to_string()));
+                }
+                // Check next line
+                else if i + 1 < lines.len() {
+                    if let Some(name) = extract_fn_name_from_line(lines[i + 1].trim()) {
+                        exports.push((name, "pyo3".to_string()));
+                    }
+                }
+            }
+            if trimmed.contains("#[pyclass]") || trimmed.contains("#[pyclass(") {
+                if let Some(name) = extract_struct_name_from_line(trimmed) {
+                    exports.push((name, "pyo3".to_string()));
+                } else if i + 1 < lines.len() {
+                    if let Some(name) = extract_struct_name_from_line(lines[i + 1].trim()) {
+                        exports.push((name, "pyo3".to_string()));
+                    }
+                }
+            }
+            // #[pymethods] impl Foo { fn bar() → export "bar"
+            if trimmed.contains("#[pymethods]") {
+                if let Some(impl_line) = lines.get(i + 1) {
+                    let t = impl_line.trim();
+                    if t.starts_with("impl ") {
+                        // Scan methods inside this impl block
+                        let mut j = i + 2;
+                        let mut depth = 0i32;
+                        while j < lines.len() {
+                            let lt = lines[j].trim();
+                            depth += lt.matches('{').count() as i32 - lt.matches('}').count() as i32;
+                            if depth < 0 { break; }
+                            if (lt.starts_with("fn ") || lt.starts_with("pub fn ")) && lt.contains('(') {
+                                if let Some(name) = extract_fn_name_from_line(lt) {
+                                    exports.push((name, "pyo3".to_string()));
+                                }
+                            }
+                            j += 1;
+                        }
+                    }
+                }
+            }
+
+            // ── JNI: JNIEXPORT ... Java_pkg_Class_method ──────────────
+            if trimmed.contains("JNIEXPORT") && trimmed.contains("Java_") {
+                // Extract: Java_com_example_ClassName_methodName
+                if let Some(java_pos) = trimmed.find("Java_") {
+                    let rest = &trimmed[java_pos..];
+                    let jni_name: String = rest.chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect();
+                    // Last component after final underscore is the method name
+                    if let Some(method) = jni_name.rsplit('_').next() {
+                        if !method.is_empty() {
+                            exports.push((method.to_string(), "jni".to_string()));
+                        }
+                    }
+                }
+            }
+            // JNI Java-side: public native void process(
+            if (trimmed.contains("native ") || trimmed.starts_with("native "))
+                && trimmed.contains('(')
+            {
+                let before_paren = trimmed.split('(').next().unwrap_or("");
+                let words: Vec<&str> = before_paren.split_whitespace().collect();
+                if let Some(name) = words.last() {
+                    let clean = name.trim();
+                    if !clean.is_empty() && clean != "native" {
+                        exports.push((clean.to_string(), "jni".to_string()));
+                    }
+                }
+            }
+
+            // ── CGo: //export FunctionName ─────────────────────────────
+            if trimmed.starts_with("//export ") {
+                let name = trimmed.trim_start_matches("//export ").trim();
+                if !name.is_empty() {
+                    exports.push((name.to_string(), "cgo".to_string()));
+                }
+            }
+
+            // ── WASM: #[wasm_bindgen] ─────────────────────────────────
+            if trimmed.contains("#[wasm_bindgen]") || trimmed.contains("#[wasm_bindgen(") {
+                if let Some(name) = extract_fn_name_from_line(trimmed) {
+                    exports.push((name, "wasm".to_string()));
+                } else if i + 1 < lines.len() {
+                    if let Some(name) = extract_fn_name_from_line(lines[i + 1].trim()) {
+                        exports.push((name, "wasm".to_string()));
+                    }
+                }
+            }
+
+            // ── N-API: #[napi] ────────────────────────────────────────
+            if trimmed.contains("#[napi]") || trimmed.contains("#[napi(") {
+                if let Some(name) = extract_fn_name_from_line(trimmed) {
+                    exports.push((name, "napi".to_string()));
+                } else if i + 1 < lines.len() {
+                    if let Some(name) = extract_fn_name_from_line(lines[i + 1].trim()) {
+                        exports.push((name, "napi".to_string()));
+                    }
+                }
+            }
+
+            // ── C FFI: extern "C" fn name( ────────────────────────────
+            if trimmed.contains("extern \"C\"") && trimmed.contains("fn ") && trimmed.contains('(') {
+                if let Some(name) = extract_fn_name_from_line(trimmed) {
+                    exports.push((name, "c_ffi".to_string()));
+                }
+            }
+            // C header-style: void __attribute__((visibility("default"))) func_name(
+            // or simply exported C functions
+            if trimmed.contains("__attribute__") && trimmed.contains("visibility")
+                && trimmed.contains('(')
+            {
+                let before_paren = trimmed.split('(').next().unwrap_or("");
+                let words: Vec<&str> = before_paren.split_whitespace().collect();
+                if let Some(name) = words.last() {
+                    let clean = name.trim();
+                    if !clean.is_empty() {
+                        exports.push((clean.to_string(), "c_ffi".to_string()));
+                    }
+                }
+            }
+        }
+
+        exports
     }
 
     /// Check if a symbol appears to be used as a type reference
@@ -439,15 +826,16 @@ fn extract_definitions(content: &str) -> Vec<String> {
                 }
             }
         }
-        // JS/TS: function foo(, const foo =, export function
-        else if trimmed.starts_with("function ") || trimmed.starts_with("export function ") {
+        // JS/TS: function foo(, export function foo(
+        else if trimmed.starts_with("function ") || trimmed.starts_with("export function ")
+            || trimmed.starts_with("export default function ")
+            || trimmed.starts_with("async function ")
+            || trimmed.starts_with("export async function ")
+        {
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             let fn_idx = parts.iter().position(|&w| w == "function").map(|i| i + 1);
             if let Some(idx) = fn_idx {
                 if let Some(name) = parts.get(idx) {
-                    // Split on '(' to get name before params — consistent with
-                    // Python/Rust extraction. Previously used trim_end_matches('(')
-                    // which failed on "App()" because the trailing char is ')'.
                     let clean = name.split('(').next().unwrap_or(name);
                     let clean = clean.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
                     if !clean.is_empty() {
@@ -456,9 +844,224 @@ fn extract_definitions(content: &str) -> Vec<String> {
                 }
             }
         }
+        // JS/TS: const App = () => {, const handler = async () => {, export const foo = (
+        // Also catches: const schema = z.object({, const router = express.Router()
+        else if (trimmed.starts_with("const ") || trimmed.starts_with("let ")
+            || trimmed.starts_with("export const ") || trimmed.starts_with("export let ")
+            || trimmed.starts_with("export default "))
+            && (trimmed.contains("=>") || trimmed.contains("= function")
+                || trimmed.contains("= async function") || trimmed.contains("= ("))
+        {
+            // Extract: const NAME = ...
+            let after_kw = trimmed
+                .trim_start_matches("export ")
+                .trim_start_matches("default ")
+                .trim_start_matches("const ")
+                .trim_start_matches("let ");
+            if let Some(name) = after_kw.split([' ', ':', '=']).next() {
+                let clean = name.trim();
+                if !clean.is_empty() && clean.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
+                    defs.push(clean.to_string());
+                }
+            }
+        }
+        // TS: interface Foo {, export interface Foo {
+        else if trimmed.starts_with("interface ") || trimmed.starts_with("export interface ") {
+            let after_kw = trimmed
+                .trim_start_matches("export ")
+                .trim_start_matches("interface ");
+            if let Some(name) = after_kw.split([' ', '{', '<']).next() {
+                let clean = name.trim();
+                if !clean.is_empty() {
+                    defs.push(clean.to_string());
+                }
+            }
+        }
+        // TS: type Foo = ..., export type Foo = ...
+        else if (trimmed.starts_with("type ") || trimmed.starts_with("export type "))
+            && trimmed.contains('=')
+        {
+            let after_kw = trimmed
+                .trim_start_matches("export ")
+                .trim_start_matches("type ");
+            if let Some(name) = after_kw.split([' ', '=', '<']).next() {
+                let clean = name.trim();
+                if !clean.is_empty() {
+                    defs.push(clean.to_string());
+                }
+            }
+        }
+        // TS/JS: enum Status {, export enum Status {
+        else if trimmed.starts_with("enum ") || trimmed.starts_with("export enum ")
+            || trimmed.starts_with("const enum ") || trimmed.starts_with("export const enum ")
+        {
+            let after_kw = trimmed
+                .trim_start_matches("export ")
+                .trim_start_matches("const ")
+                .trim_start_matches("enum ");
+            if let Some(name) = after_kw.split([' ', '{']).next() {
+                let clean = name.trim();
+                if !clean.is_empty() {
+                    defs.push(clean.to_string());
+                }
+            }
+        }
+        // Go: func HandleRequest(, func (s *Server) Start(, type Config struct
+        else if trimmed.starts_with("func ") {
+            // Method: func (recv) Name(  or  Function: func Name(
+            if trimmed.starts_with("func (") {
+                // Method receiver: func (s *Server) Name(
+                if let Some(after_paren) = trimmed.find(") ") {
+                    let rest = &trimmed[after_paren + 2..];
+                    if let Some(name) = rest.split('(').next() {
+                        let clean = name.trim();
+                        if !clean.is_empty() {
+                            defs.push(clean.to_string());
+                        }
+                    }
+                }
+            } else {
+                // Regular function: func Name(
+                let rest = trimmed.trim_start_matches("func ");
+                if let Some(name) = rest.split('(').next() {
+                    let clean = name.trim();
+                    if !clean.is_empty() {
+                        defs.push(clean.to_string());
+                    }
+                }
+            }
+        }
+        // Go: type Config struct {, type Handler interface {, type ID = string
+        else if trimmed.starts_with("type ") && !trimmed.contains('=') {
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() >= 3 {
+                let name = words[1];
+                if !name.is_empty() {
+                    defs.push(name.to_string());
+                }
+            }
+        }
+        // Java/Kotlin: public class Foo {, abstract class Bar, interface Baz
+        else if (trimmed.contains("class ") || trimmed.contains("interface "))
+            && (trimmed.starts_with("public ") || trimmed.starts_with("private ")
+                || trimmed.starts_with("protected ") || trimmed.starts_with("abstract ")
+                || trimmed.starts_with("final ") || trimmed.starts_with("class ")
+                || trimmed.starts_with("interface ") || trimmed.starts_with("data class ")
+                || trimmed.starts_with("sealed ") || trimmed.starts_with("open "))
+        {
+            // Find "class Name" or "interface Name"
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            for (i, &w) in words.iter().enumerate() {
+                if (w == "class" || w == "interface") && i + 1 < words.len() {
+                    let name = words[i + 1].split(['{', '<', '(', ':']).next().unwrap_or("");
+                    if !name.is_empty() {
+                        defs.push(name.to_string());
+                    }
+                    break;
+                }
+            }
+        }
+        // Java/Kotlin: public void handleRequest(, public static String process(
+        else if (trimmed.starts_with("public ") || trimmed.starts_with("private ")
+            || trimmed.starts_with("protected ") || trimmed.starts_with("static ")
+            || trimmed.starts_with("override ") || trimmed.starts_with("suspend "))
+            && trimmed.contains('(') && !trimmed.contains("class ") && !trimmed.contains("interface ")
+        {
+            let before_paren = trimmed.split('(').next().unwrap_or("");
+            let words: Vec<&str> = before_paren.split_whitespace().collect();
+            // Last word before '(' is the method name
+            if let Some(name) = words.last() {
+                let clean = name.trim();
+                if !clean.is_empty() && !is_keyword(clean) {
+                    defs.push(clean.to_string());
+                }
+            }
+        }
+        // C/C++: class Foo {, struct Bar {, namespace Baz {
+        else if (trimmed.starts_with("class ") || trimmed.starts_with("struct ")
+            || trimmed.starts_with("namespace "))
+            && !trimmed.starts_with("class ") // avoid conflicting with Java above (Java caught above)
+            || (trimmed.starts_with("typedef ") && trimmed.contains("struct"))
+        {
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() >= 2 {
+                let name = words[1].split(['{', ';', ':']).next().unwrap_or("");
+                if !name.is_empty() && !is_keyword(name) {
+                    defs.push(name.to_string());
+                }
+            }
+        }
+        // Ruby: class Foo, module Bar, def method_name
+        else if trimmed.starts_with("module ") && !trimmed.starts_with("module.") {
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if words.len() >= 2 {
+                let name = words[1].split([';', '<', ':']).next().unwrap_or("");
+                if !name.is_empty() {
+                    defs.push(name.to_string());
+                }
+            }
+        }
     }
 
     defs
+}
+
+/// Extract the LHS variable name from `const foo = require('...')`.
+fn extract_require_lhs(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    // Match: const/let/var NAME = require(
+    for kw in &["const ", "let ", "var "] {
+        if let Some(rest) = trimmed.strip_prefix(kw) {
+            if let Some(eq_pos) = rest.find('=') {
+                let before_eq = rest[..eq_pos].trim();
+                let after_eq = rest[eq_pos + 1..].trim();
+                if after_eq.starts_with("require(") {
+                    // Handle destructuring: const { foo, bar } = require(...)
+                    if before_eq.starts_with('{') && before_eq.contains('}') {
+                        let inner = &before_eq[1..before_eq.find('}')?];
+                        for name in inner.split(',') {
+                            let clean = name.trim().split(':').next()?.trim();
+                            if !clean.is_empty() {
+                                return Some(clean.to_string());
+                            }
+                        }
+                    } else {
+                        let clean = before_eq.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                        if !clean.is_empty() {
+                            return Some(clean.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract function name from a line like "fn process(" or "pub fn process(".
+fn extract_fn_name_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let fn_pos = trimmed.find("fn ")?;
+    let after_fn = &trimmed[fn_pos + 3..];
+    let name: String = after_fn.chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if name.is_empty() { None } else { Some(name) }
+}
+
+/// Extract struct/class name from a line like "struct Engine" or "pub struct Engine {".
+fn extract_struct_name_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    for kw in &["struct ", "class ", "enum "] {
+        if let Some(pos) = trimmed.find(kw) {
+            let after = &trimmed[pos + kw.len()..];
+            let name: String = after.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() { return Some(name); }
+        }
+    }
+    None
 }
 
 /// Check if an identifier is a language keyword (ignore these).
@@ -477,9 +1080,37 @@ fn is_keyword(word: &str) -> bool {
         | "function" | "var" | "this" | "new" | "typeof" | "instanceof"
         | "void" | "delete" | "throw" | "catch" | "switch" | "case" | "default"
         | "export" | "require" | "module" | "extends" | "constructor"
+        | "interface" | "implements" | "abstract" | "declare" | "namespace"
+        | "readonly" | "keyof" | "infer" | "never" | "any" | "unknown"
+        | "satisfies" | "override" | "private" | "protected" | "public"
+        // Go
+        | "func" | "package" | "chan" | "defer" | "go" | "select" | "range"
+        | "map" | "fallthrough" | "goto"
+        // Java / C#
+        | "final" | "synchronized" | "throws" | "volatile" | "transient"
+        | "native" | "strictfp" | "assert"
+        | "sealed" | "record" | "permits"
+        | "using" | "virtual" | "internal" | "partial" | "event" | "delegate"
+        | "foreach" | "checked" | "unchecked" | "fixed" | "lock" | "params"
+        // Swift
+        | "guard" | "protocol" | "extension" | "typealias"
+        | "associatedtype" | "inout" | "lazy" | "weak" | "unowned"
+        | "convenience" | "required" | "mutating" | "nonmutating" | "indirect"
+        // C/C++
+        | "auto" | "register" | "inline" | "sizeof" | "template" | "typename"
+        | "explicit" | "friend" | "mutable" | "operator" | "dynamic_cast"
+        | "static_cast" | "reinterpret_cast" | "const_cast" | "noexcept"
+        | "constexpr" | "decltype" | "nullptr" | "alignas" | "alignof"
+        // Ruby
+        | "begin" | "end" | "rescue" | "ensure" | "defined" | "do" | "then"
+        | "elsif" | "unless" | "until" | "when" | "redo" | "retry"
+        // PHP
+        | "echo" | "print" | "isset" | "unset" | "empty" | "die" | "exit"
+        | "include" | "include_once" | "require_once" | "list" | "global"
+        | "endfor" | "endforeach" | "endif" | "endwhile" | "endswitch"
         // Common
         | "true" | "false" | "null" | "undefined" | "int" | "str" | "float"
-        | "bool" | "string" | "number" | "object" | "array"
+        | "bool" | "string" | "number" | "object" | "array" | "symbol" | "bigint"
     )
 }
 
@@ -573,5 +1204,229 @@ mod tests {
             "No definition should contain parentheses, got: {:?}", defs);
         assert!(defs.contains(&"handleClick".to_string()),
             "export function handleClick() should extract 'handleClick'");
+    }
+
+    #[test]
+    fn test_extract_definitions_arrow_functions() {
+        let code = "const App = () => {\n  return <div/>;\n}\n\nexport const handler = async () => {\n  await fetch();\n}";
+        let defs = extract_definitions(code);
+        assert!(defs.contains(&"App".to_string()), "arrow fn: {:?}", defs);
+        assert!(defs.contains(&"handler".to_string()), "export arrow fn: {:?}", defs);
+    }
+
+    #[test]
+    fn test_extract_definitions_ts_interface_type_enum() {
+        let code = "interface User {\n  name: string;\n}\n\nexport type Status = 'active' | 'inactive';\n\nenum Color {\n  Red,\n  Blue,\n}";
+        let defs = extract_definitions(code);
+        assert!(defs.contains(&"User".to_string()), "interface: {:?}", defs);
+        assert!(defs.contains(&"Status".to_string()), "type alias: {:?}", defs);
+        assert!(defs.contains(&"Color".to_string()), "enum: {:?}", defs);
+    }
+
+    #[test]
+    fn test_extract_import_targets_default_import() {
+        let code = "import React from 'react';\nimport { useState } from 'react';";
+        let targets = DepGraph::extract_import_targets(code);
+        assert!(targets.contains("React"), "default import: {:?}", targets);
+        assert!(targets.contains("useState"), "named import: {:?}", targets);
+    }
+
+    #[test]
+    fn test_extract_import_targets_require() {
+        let code = "const express = require('express');\nconst { Router } = require('express');";
+        let targets = DepGraph::extract_import_targets(code);
+        assert!(targets.contains("express"), "require: {:?}", targets);
+    }
+
+    // ── P2: Cross-language FFI dep tracking ─────────────────────────
+
+    #[test]
+    fn test_pyo3_rust_to_python_linking() {
+        let mut graph = DepGraph::new();
+
+        // Rust side: #[pyfunction] fn process_data(...)
+        let rust_code = r#"
+use pyo3::prelude::*;
+
+#[pyfunction]
+fn process_data(input: &str) -> PyResult<String> {
+    Ok(input.to_uppercase())
+}
+
+#[pyclass]
+struct Engine {
+    config: String,
+}
+"#;
+        graph.auto_link("frag_rust_lib", rust_code);
+
+        // Python side: from mymodule import process_data
+        let python_code = r#"
+from mymodule import process_data, Engine
+
+result = process_data("hello")
+engine = Engine()
+"#;
+        graph.auto_link("frag_python_app", python_code);
+
+        // Verify cross-language edges were created
+        let deps = graph.outgoing.get("frag_python_app").expect("Should have deps");
+        let cross_lang_deps: Vec<_> = deps.iter()
+            .filter(|d| d.dep_type == DepType::CrossLanguageFFI)
+            .collect();
+        assert!(!cross_lang_deps.is_empty(),
+            "Python→Rust cross-language edge should exist, deps: {:?}",
+            deps.iter().map(|d| (&d.target_id, &d.dep_type)).collect::<Vec<_>>());
+        assert!(cross_lang_deps.iter().any(|d| d.target_id == "frag_rust_lib"),
+            "Should link to the Rust fragment");
+    }
+
+    #[test]
+    fn test_jni_java_to_c_linking() {
+        let mut graph = DepGraph::new();
+
+        // C side: JNIEXPORT void JNICALL Java_com_example_App_processData
+        let c_code = r#"
+#include <jni.h>
+JNIEXPORT void JNICALL Java_com_example_App_processData(JNIEnv *env, jobject obj) {
+    // native impl
+}
+"#;
+        graph.auto_link("frag_c_native", c_code);
+
+        // Java side: native void processData()
+        let java_code = r#"
+public class App {
+    public native void processData();
+    static { System.loadLibrary("mylib"); }
+}
+"#;
+        graph.auto_link("frag_java_app", java_code);
+
+        // Both sides should export "processData" via JNI
+        assert!(graph.cross_lang_exports.contains_key("processData"),
+            "processData should be in cross_lang_exports: {:?}",
+            graph.cross_lang_exports.keys().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_cgo_export_linking() {
+        let mut graph = DepGraph::new();
+
+        let go_code = r#"
+package main
+
+import "C"
+
+//export ProcessData
+func ProcessData(input *C.char) *C.char {
+    return C.CString("processed")
+}
+"#;
+        graph.auto_link("frag_go_lib", go_code);
+
+        assert!(graph.cross_lang_exports.contains_key("ProcessData"),
+            "CGo export should register: {:?}",
+            graph.cross_lang_exports.keys().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_wasm_bindgen_linking() {
+        let mut graph = DepGraph::new();
+
+        let rust_code = r#"
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub fn greet(name: &str) -> String {
+    format!("Hello, {}!", name)
+}
+"#;
+        graph.auto_link("frag_wasm_lib", rust_code);
+
+        // JS side imports greet
+        let js_code = "import { greet } from './pkg/my_wasm';\nconst msg = greet('world');";
+        graph.auto_link("frag_js_app", js_code);
+
+        assert!(graph.cross_lang_exports.contains_key("greet"),
+            "wasm_bindgen export should register");
+        let deps = graph.outgoing.get("frag_js_app").expect("Should have deps");
+        assert!(deps.iter().any(|d| d.dep_type == DepType::CrossLanguageFFI),
+            "JS→WASM cross-language edge should exist");
+    }
+
+    #[test]
+    fn test_napi_linking() {
+        let mut graph = DepGraph::new();
+
+        let rust_code = "#[napi]\nfn compute(a: i32, b: i32) -> i32 { a + b }";
+        graph.auto_link("frag_napi_lib", rust_code);
+
+        assert!(graph.cross_lang_exports.contains_key("compute"),
+            "N-API export should register");
+    }
+
+    #[test]
+    fn test_c_ffi_extern_c_linking() {
+        let mut graph = DepGraph::new();
+
+        let rust_code = r#"
+#[no_mangle]
+pub extern "C" fn init_engine(config: *const c_char) -> *mut Engine {
+    Box::into_raw(Box::new(Engine::new()))
+}
+"#;
+        graph.auto_link("frag_rust_ffi", rust_code);
+
+        // Python ctypes consumer
+        let python_code = "import ctypes\nlib = ctypes.CDLL('./libengine.so')\nresult = lib.init_engine(config)";
+        graph.auto_link("frag_python_ctypes", python_code);
+
+        assert!(graph.cross_lang_exports.contains_key("init_engine"),
+            "extern C export should register: {:?}",
+            graph.cross_lang_exports.keys().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_cross_lang_dep_boost() {
+        // Cross-language deps should participate in dependency boost
+        let mut graph = DepGraph::new();
+
+        let rust_code = "#[pyfunction]\nfn analyze(data: &str) -> PyResult<String> { Ok(data.to_string()) }";
+        graph.auto_link("frag_rust", rust_code);
+
+        let python_code = "from mymod import analyze\nresult = analyze(raw_data)";
+        graph.auto_link("frag_python", python_code);
+
+        let mut selected = HashSet::new();
+        selected.insert("frag_python".to_string());
+
+        let boosts = graph.compute_dep_boosts(&selected);
+        assert!(boosts.get("frag_rust").unwrap_or(&0.0) > &0.0,
+            "Rust fragment should get boost when Python consumer is selected");
+    }
+
+    #[test]
+    fn test_pymethods_exports_methods() {
+        let mut graph = DepGraph::new();
+
+        let rust_code = r#"
+#[pymethods]
+impl Engine {
+    fn run(&self, input: &str) -> String {
+        input.to_uppercase()
+    }
+    pub fn stop(&self) {
+        // cleanup
+    }
+}
+"#;
+        graph.auto_link("frag_engine", rust_code);
+
+        assert!(graph.cross_lang_exports.contains_key("run"),
+            "#[pymethods] should export method 'run': {:?}",
+            graph.cross_lang_exports.keys().collect::<Vec<_>>());
+        assert!(graph.cross_lang_exports.contains_key("stop"),
+            "#[pymethods] should export method 'stop'");
     }
 }

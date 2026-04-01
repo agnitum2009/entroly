@@ -727,6 +727,7 @@ class TestIOSRegressionFixes:
                 50,
             )
 
+        engine.advance_turn()
         selected_sets = set()
         explored_calls = 0
         for _ in range(50):
@@ -750,6 +751,7 @@ class TestIOSRegressionFixes:
                 50,
             )
 
+        engine.advance_turn()
         exploratory = None
         for _ in range(10):
             result = engine.optimize(250, "search")

@@ -21,6 +21,18 @@ enum Lang {
     Rust,
     JavaScript,
     TypeScript,
+    Go,
+    Java,
+    CSharp,
+    Swift,
+    Cpp,
+    Shell,
+    Ruby,
+    Php,
+    Vue,
+    Svelte,
+    Html,
+    Css,
     Unknown,
 }
 
@@ -30,10 +42,35 @@ fn detect_lang(source: &str) -> Lang {
         Lang::Python
     } else if lower.ends_with(".rs") {
         Lang::Rust
-    } else if lower.ends_with(".js") || lower.ends_with(".jsx") || lower.ends_with(".mjs") {
+    } else if lower.ends_with(".js") || lower.ends_with(".jsx") || lower.ends_with(".mjs") || lower.ends_with(".cjs") {
         Lang::JavaScript
-    } else if lower.ends_with(".ts") || lower.ends_with(".tsx") {
+    } else if lower.ends_with(".ts") || lower.ends_with(".tsx") || lower.ends_with(".mts") || lower.ends_with(".cts") {
         Lang::TypeScript
+    } else if lower.ends_with(".go") {
+        Lang::Go
+    } else if lower.ends_with(".java") || lower.ends_with(".kt") {
+        Lang::Java
+    } else if lower.ends_with(".cs") || lower.ends_with(".csx") {
+        Lang::CSharp
+    } else if lower.ends_with(".swift") {
+        Lang::Swift
+    } else if lower.ends_with(".c") || lower.ends_with(".cpp") || lower.ends_with(".cc")
+        || lower.ends_with(".h") || lower.ends_with(".hpp") || lower.ends_with(".hxx") {
+        Lang::Cpp
+    } else if lower.ends_with(".sh") || lower.ends_with(".bash") || lower.ends_with(".zsh") {
+        Lang::Shell
+    } else if lower.ends_with(".rb") {
+        Lang::Ruby
+    } else if lower.ends_with(".php") {
+        Lang::Php
+    } else if lower.ends_with(".vue") {
+        Lang::Vue
+    } else if lower.ends_with(".svelte") {
+        Lang::Svelte
+    } else if lower.ends_with(".html") || lower.ends_with(".htm") {
+        Lang::Html
+    } else if lower.ends_with(".css") || lower.ends_with(".scss") || lower.ends_with(".less") {
+        Lang::Css
     } else {
         Lang::Unknown
     }
@@ -61,6 +98,16 @@ pub fn extract_skeleton(content: &str, source: &str) -> Option<String> {
         Lang::Python => extract_python_skeleton(content),
         Lang::Rust => extract_rust_skeleton(content),
         Lang::JavaScript | Lang::TypeScript => extract_js_skeleton(content),
+        Lang::Go => extract_go_skeleton(content),
+        Lang::Java | Lang::CSharp => extract_java_skeleton(content),
+        Lang::Swift => extract_swift_skeleton(content),
+        Lang::Cpp => extract_cpp_skeleton(content),
+        Lang::Shell => extract_shell_skeleton(content),
+        Lang::Ruby => extract_ruby_skeleton(content),
+        Lang::Php => extract_php_skeleton(content),
+        Lang::Vue | Lang::Svelte => extract_sfc_skeleton(content),
+        Lang::Html => extract_html_skeleton(content),
+        Lang::Css => extract_css_skeleton(content),
         Lang::Unknown => return None,
     };
 
@@ -75,6 +122,16 @@ pub fn extract_skeleton(content: &str, source: &str) -> Option<String> {
     }
 
     Some(skeleton)
+}
+
+/// Count leading spaces in a line.
+fn leading_spaces(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+/// Count occurrences of a character in a string.
+fn count_char(s: &str, ch: char) -> usize {
+    s.chars().filter(|&c| c == ch).count()
 }
 
 /// Python skeleton: keep imports, decorators, class/def signatures, top-level assignments.
@@ -614,17 +671,649 @@ fn extract_js_skeleton(content: &str) -> String {
     out.join("\n")
 }
 
+/// Go skeleton: keep package, imports, func signatures, type definitions, const blocks.
+/// Replace function bodies with `// ...`
+fn extract_go_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() {
+                out.push(String::new());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Comments (// and doc comments)
+        if trimmed.starts_with("//") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Package declaration
+        if trimmed.starts_with("package ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Import block: import ( ... )
+        if trimmed.starts_with("import (") {
+            out.push(line.to_string());
+            i += 1;
+            while i < lines.len() && !lines[i].trim().starts_with(')') {
+                out.push(lines[i].to_string());
+                i += 1;
+            }
+            if i < lines.len() {
+                out.push(lines[i].to_string());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Single import
+        if trimmed.starts_with("import ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Const/var blocks
+        if trimmed.starts_with("const (") || trimmed.starts_with("var (") {
+            out.push(line.to_string());
+            i += 1;
+            while i < lines.len() && !lines[i].trim().starts_with(')') {
+                out.push(lines[i].to_string());
+                i += 1;
+            }
+            if i < lines.len() {
+                out.push(lines[i].to_string());
+            }
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("const ") || trimmed.starts_with("var ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Type definitions: type Foo struct/interface { ... }
+        if trimmed.starts_with("type ") {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                if depth > 0 {
+                    i += 1;
+                    while i < lines.len() && depth > 0 {
+                        let l = lines[i];
+                        depth += count_char(l, '{') as i32 - count_char(l, '}') as i32;
+                        // Keep interface method sigs and struct fields
+                        let t = l.trim();
+                        if !t.is_empty() {
+                            out.push(l.to_string());
+                        }
+                        i += 1;
+                    }
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // Function/method definitions — keep signature, skip body
+        if trimmed.starts_with("func ") {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                if depth > 0 {
+                    out.push("\t// ...".to_string());
+                    i += 1;
+                    while i < lines.len() && depth > 0 {
+                        depth += count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                        i += 1;
+                    }
+                    out.push("}".to_string());
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// Java/Kotlin skeleton: keep package, imports, class/interface signatures,
+/// method signatures, annotations. Strip method bodies.
+fn extract_java_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() {
+                out.push(String::new());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Javadoc / block comments
+        if trimmed.starts_with("/**") || trimmed.starts_with("/*") {
+            out.push(line.to_string());
+            if !trimmed.contains("*/") {
+                i += 1;
+                while i < lines.len() {
+                    out.push(lines[i].to_string());
+                    if lines[i].contains("*/") { break; }
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // Line comments
+        if trimmed.starts_with("//") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Package / import
+        if trimmed.starts_with("package ") || trimmed.starts_with("import ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Annotations (@Override, @Service, etc.)
+        if trimmed.starts_with('@') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Class / interface / enum declarations
+        if is_java_type_def(trimmed) {
+            out.push(line.to_string());
+            i += 1;
+            // Enter class body — keep method signatures, skip bodies
+            if trimmed.contains('{') {
+                let mut class_depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                while i < lines.len() && class_depth > 0 {
+                    let l = lines[i];
+                    let t = l.trim();
+                    let delta = count_char(t, '{') as i32 - count_char(t, '}') as i32;
+                    class_depth += delta;
+
+                    if class_depth <= 0 {
+                        out.push(l.to_string());
+                        i += 1;
+                        break;
+                    }
+
+                    // Annotations
+                    if t.starts_with('@') {
+                        out.push(l.to_string());
+                        i += 1;
+                        continue;
+                    }
+
+                    // Nested class/interface
+                    if is_java_type_def(t) {
+                        out.push(l.to_string());
+                        i += 1;
+                        continue;
+                    }
+
+                    // Method signature (has parens, visibility modifier)
+                    if t.contains('(') && is_java_method_line(t) {
+                        out.push(l.to_string());
+                        if t.contains('{') && delta > 0 {
+                            let indent = " ".repeat(leading_spaces(l));
+                            out.push(format!("{}    // ...", indent));
+                            i += 1;
+                            let mut method_depth = delta;
+                            while i < lines.len() && method_depth > 0 {
+                                let md = count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                                method_depth += md;
+                                class_depth += md;
+                                i += 1;
+                            }
+                            out.push(format!("{}}}", indent));
+                            continue;
+                        }
+                        i += 1;
+                        continue;
+                    }
+
+                    // Field declarations (no parens, has semicolon)
+                    if t.ends_with(';') && !t.contains('(') {
+                        out.push(l.to_string());
+                    }
+
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// C/C++ skeleton: keep #include, namespace, class/struct definitions,
+/// function signatures. Strip function bodies.
+fn extract_cpp_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() {
+                out.push(String::new());
+            }
+            i += 1;
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with("//") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("/*") {
+            out.push(line.to_string());
+            if !trimmed.contains("*/") {
+                i += 1;
+                while i < lines.len() {
+                    out.push(lines[i].to_string());
+                    if lines[i].contains("*/") { break; }
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // Preprocessor directives (#include, #define, #pragma, #ifdef, etc.)
+        if trimmed.starts_with('#') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // using / typedef
+        if trimmed.starts_with("using ") || trimmed.starts_with("typedef ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // namespace
+        if trimmed.starts_with("namespace ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // class / struct definition — keep members, skip method bodies
+        if (trimmed.starts_with("class ") || trimmed.starts_with("struct ")
+            || trimmed.starts_with("template"))
+            && (trimmed.contains('{') || !trimmed.ends_with(';'))
+        {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                i += 1;
+                while i < lines.len() && depth > 0 {
+                    let l = lines[i];
+                    let t = l.trim();
+                    let delta = count_char(t, '{') as i32 - count_char(t, '}') as i32;
+                    depth += delta;
+
+                    if depth <= 0 {
+                        out.push(l.to_string());
+                        i += 1;
+                        break;
+                    }
+
+                    // Inline method with body — keep sig, skip body
+                    if t.contains('(') && t.contains('{') && delta > 0 {
+                        out.push(l.to_string());
+                        let indent = " ".repeat(leading_spaces(l));
+                        out.push(format!("{}    // ...", indent));
+                        i += 1;
+                        let mut fn_depth = delta;
+                        while i < lines.len() && fn_depth > 0 {
+                            let fd = count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                            fn_depth += fd;
+                            depth += fd;
+                            i += 1;
+                        }
+                        out.push(format!("{}}}", indent));
+                        continue;
+                    }
+
+                    // Keep declarations and access specifiers
+                    if !t.is_empty() {
+                        out.push(l.to_string());
+                    }
+                    i += 1;
+                }
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Free function definitions — keep signature, skip body
+        if is_cpp_function_def(trimmed) {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                if depth > 0 {
+                    let indent = " ".repeat(leading_spaces(line));
+                    out.push(format!("{}    // ...", indent));
+                    i += 1;
+                    while i < lines.len() && depth > 0 {
+                        depth += count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                        i += 1;
+                    }
+                    out.push(format!("{}}}", indent));
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // Enum definitions
+        if trimmed.starts_with("enum ") {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                i += 1;
+                while i < lines.len() && depth > 0 {
+                    let l = lines[i];
+                    depth += count_char(l, '{') as i32 - count_char(l, '}') as i32;
+                    out.push(l.to_string());
+                    i += 1;
+                }
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// Swift skeleton: keep import, class/struct/protocol/enum definitions,
+/// func signatures, property declarations. Strip function bodies.
+fn extract_swift_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+        let indent = leading_spaces(line);
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            i += 1;
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with("//") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("/*") {
+            out.push(line.to_string());
+            if !trimmed.contains("*/") {
+                i += 1;
+                while i < lines.len() {
+                    out.push(lines[i].to_string());
+                    if lines[i].contains("*/") { break; }
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // Import
+        if trimmed.starts_with("import ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Attributes (@objc, @available, etc.)
+        if trimmed.starts_with('@') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Class / struct / protocol / enum / extension
+        if indent == 0 && is_swift_type_def(trimmed) {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                i += 1;
+                while i < lines.len() && depth > 0 {
+                    let l = lines[i];
+                    let t = l.trim();
+                    let delta = count_char(t, '{') as i32 - count_char(t, '}') as i32;
+                    depth += delta;
+
+                    if depth <= 0 {
+                        out.push(l.to_string());
+                        i += 1;
+                        break;
+                    }
+
+                    // func signature — keep sig, skip body
+                    if t.starts_with("func ") || t.starts_with("static func ")
+                        || t.starts_with("class func ") || t.starts_with("override func ")
+                        || t.starts_with("private func ") || t.starts_with("public func ")
+                    {
+                        out.push(l.to_string());
+                        if t.contains('{') && delta > 0 {
+                            let ind = " ".repeat(leading_spaces(l));
+                            out.push(format!("{}    // ...", ind));
+                            i += 1;
+                            let mut fn_d = delta;
+                            while i < lines.len() && fn_d > 0 {
+                                let fd = count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                                fn_d += fd;
+                                depth += fd;
+                                i += 1;
+                            }
+                            out.push(format!("{}}}", ind));
+                            continue;
+                        }
+                        i += 1;
+                        continue;
+                    }
+
+                    // Property declarations (var/let)
+                    if (t.starts_with("var ") || t.starts_with("let ")
+                        || t.starts_with("private ") || t.starts_with("public "))
+                        && !t.contains('{')
+                    {
+                        out.push(l.to_string());
+                    }
+
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Top-level func
+        if indent == 0 && (trimmed.starts_with("func ") || trimmed.starts_with("public func ")
+            || trimmed.starts_with("private func "))
+        {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                if depth > 0 {
+                    out.push("    // ...".to_string());
+                    i += 1;
+                    while i < lines.len() && depth > 0 {
+                        depth += count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                        i += 1;
+                    }
+                    out.push("}".to_string());
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
+/// Shell skeleton: keep shebang, function definitions (signature only),
+/// export/source statements, global variable assignments.
+fn extract_shell_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            i += 1;
+            continue;
+        }
+
+        // Shebang
+        if trimmed.starts_with("#!") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with('#') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Source / dot-source
+        if trimmed.starts_with("source ") || trimmed.starts_with(". ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Export statements
+        if trimmed.starts_with("export ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Function definitions: function_name() { or function function_name {
+        let is_func = (trimmed.contains("()") && trimmed.contains('{'))
+            || trimmed.starts_with("function ");
+        if is_func && trimmed.contains('{') {
+            out.push(line.to_string());
+            let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+            if depth > 0 {
+                out.push("    # ...".to_string());
+                i += 1;
+                while i < lines.len() && depth > 0 {
+                    depth += count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                    i += 1;
+                }
+                out.push("}".to_string());
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Top-level variable assignments (no indentation)
+        if leading_spaces(line) == 0 && trimmed.contains('=') && !trimmed.starts_with("if ")
+            && !trimmed.starts_with("while ") && !trimmed.starts_with("for ")
+        {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════
-
-fn leading_spaces(line: &str) -> usize {
-    line.len() - line.trim_start().len()
-}
-
-fn count_char(s: &str, c: char) -> usize {
-    s.chars().filter(|&ch| ch == c).count()
-}
 
 fn is_rust_type_def(trimmed: &str) -> bool {
     trimmed.starts_with("pub struct ") || trimmed.starts_with("struct ")
@@ -654,6 +1343,581 @@ fn is_js_method_sig(trimmed: &str) -> bool {
     } else {
         false
     }
+}
+
+fn is_java_type_def(trimmed: &str) -> bool {
+    let keywords = ["class ", "interface ", "enum "];
+    let modifiers = ["public ", "private ", "protected ", "abstract ", "final ",
+                     "static ", "sealed ", "open ", "data class "];
+    for kw in &keywords {
+        if trimmed.starts_with(kw) { return true; }
+    }
+    for m in &modifiers {
+        if trimmed.starts_with(m) {
+            for kw in &keywords {
+                if trimmed.contains(kw) { return true; }
+            }
+        }
+    }
+    false
+}
+
+fn is_java_method_line(trimmed: &str) -> bool {
+    let modifiers = ["public ", "private ", "protected ", "static ", "final ",
+                     "abstract ", "synchronized ", "native ", "override ",
+                     "suspend ", "default "];
+    modifiers.iter().any(|m| trimmed.starts_with(m))
+}
+
+fn is_cpp_function_def(trimmed: &str) -> bool {
+    // C++ free function: return_type name(args) { or return_type name(args) const {
+    // Must have '(' and '{' or just '(' at end, not be a control statement
+    if !trimmed.contains('(') { return false; }
+    if trimmed.starts_with("if ") || trimmed.starts_with("for ")
+        || trimmed.starts_with("while ") || trimmed.starts_with("switch ")
+        || trimmed.starts_with("return ") { return false; }
+    // Has a return type and function name before (
+    let before_paren = trimmed.split('(').next().unwrap_or("");
+    let words: Vec<&str> = before_paren.split_whitespace().collect();
+    // At least two words: return_type function_name
+    words.len() >= 2 && trimmed.contains('{')
+}
+
+fn is_swift_type_def(trimmed: &str) -> bool {
+    let keywords = ["class ", "struct ", "enum ", "protocol ", "extension ", "actor "];
+    let modifiers = ["public ", "private ", "internal ", "open ", "final "];
+    for kw in &keywords {
+        if trimmed.starts_with(kw) { return true; }
+    }
+    for m in &modifiers {
+        if trimmed.starts_with(m) {
+            for kw in &keywords {
+                if trimmed.contains(kw) { return true; }
+            }
+        }
+    }
+    false
+}
+
+/// Ruby skeleton: keep require, class/module definitions, def signatures,
+/// attr_accessor/reader/writer, comments. Strip method bodies.
+fn extract_ruby_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            i += 1;
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with('#') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // require / require_relative / include / extend
+        if trimmed.starts_with("require ") || trimmed.starts_with("require_relative ")
+            || trimmed.starts_with("include ") || trimmed.starts_with("extend ")
+            || trimmed.starts_with("gem ")
+        {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // attr_accessor / attr_reader / attr_writer
+        if trimmed.starts_with("attr_") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // class / module definition
+        if trimmed.starts_with("class ") || trimmed.starts_with("module ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // def — keep signature, skip body until matching end
+        if trimmed.starts_with("def ") {
+            out.push(line.to_string());
+            let indent = leading_spaces(line);
+            let ind = " ".repeat(indent);
+            out.push(format!("{}  # ...", ind));
+            i += 1;
+            // Skip until matching 'end' at same or lower indent
+            let mut depth = 1i32;
+            while i < lines.len() && depth > 0 {
+                let t = lines[i].trim();
+                if t == "end" || (t.starts_with("end ") && leading_spaces(lines[i]) <= indent) {
+                    depth -= 1;
+                } else if t.starts_with("def ") || t.starts_with("class ")
+                    || t.starts_with("module ") || t.starts_with("do")
+                    || t.ends_with(" do") || t.ends_with(" do |")
+                    || (t.starts_with("if ") && !t.contains("then"))
+                    || t.starts_with("unless ") || t.starts_with("while ")
+                    || t.starts_with("begin")
+                {
+                    depth += 1;
+                }
+                if depth <= 0 { break; }
+                i += 1;
+            }
+            out.push(format!("{}end", ind));
+            i += 1;
+            continue;
+        }
+
+        // end (for class/module)
+        if trimmed == "end" {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Constants
+        if trimmed.chars().next().is_some_and(|c| c.is_uppercase()) && trimmed.contains(" = ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
+/// PHP skeleton: keep namespace, use, class/interface/trait definitions,
+/// function/method signatures, property declarations. Strip function bodies.
+fn extract_php_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Blank lines
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            i += 1;
+            continue;
+        }
+
+        // PHP tag
+        if trimmed.starts_with("<?") || trimmed.starts_with("?>") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("/*") || trimmed.starts_with("/**") {
+            out.push(line.to_string());
+            if !trimmed.contains("*/") {
+                i += 1;
+                while i < lines.len() {
+                    out.push(lines[i].to_string());
+                    if lines[i].contains("*/") { break; }
+                    i += 1;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        // namespace / use
+        if trimmed.starts_with("namespace ") || trimmed.starts_with("use ") {
+            out.push(line.to_string());
+            i += 1;
+            continue;
+        }
+
+        // class / interface / trait / abstract class
+        if is_php_type_def(trimmed) {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                i += 1;
+                while i < lines.len() && depth > 0 {
+                    let l = lines[i];
+                    let t = l.trim();
+                    let delta = count_char(t, '{') as i32 - count_char(t, '}') as i32;
+                    depth += delta;
+
+                    if depth <= 0 {
+                        out.push(l.to_string());
+                        i += 1;
+                        break;
+                    }
+
+                    // Function/method — keep sig, skip body
+                    if is_php_function_line(t) {
+                        out.push(l.to_string());
+                        if t.contains('{') && delta > 0 {
+                            let ind = " ".repeat(leading_spaces(l));
+                            out.push(format!("{}    // ...", ind));
+                            i += 1;
+                            let mut fn_d = delta;
+                            while i < lines.len() && fn_d > 0 {
+                                let fd = count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                                fn_d += fd;
+                                depth += fd;
+                                i += 1;
+                            }
+                            out.push(format!("{}}}", ind));
+                            continue;
+                        }
+                        i += 1;
+                        continue;
+                    }
+
+                    // Property declarations, constants
+                    if (t.starts_with("public ") || t.starts_with("private ")
+                        || t.starts_with("protected ") || t.starts_with("const "))
+                        && (t.contains('$') || t.contains(" const "))
+                        && !t.contains('{')
+                    {
+                        out.push(l.to_string());
+                    }
+
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Top-level function
+        if trimmed.starts_with("function ") {
+            out.push(line.to_string());
+            if trimmed.contains('{') {
+                let mut depth = count_char(trimmed, '{') as i32 - count_char(trimmed, '}') as i32;
+                if depth > 0 {
+                    out.push("    // ...".to_string());
+                    i += 1;
+                    while i < lines.len() && depth > 0 {
+                        depth += count_char(lines[i], '{') as i32 - count_char(lines[i], '}') as i32;
+                        i += 1;
+                    }
+                    out.push("}".to_string());
+                    continue;
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
+fn is_php_type_def(trimmed: &str) -> bool {
+    let keywords = ["class ", "interface ", "trait ", "enum "];
+    let modifiers = ["abstract ", "final ", "readonly "];
+    for kw in &keywords {
+        if trimmed.starts_with(kw) { return true; }
+    }
+    for m in &modifiers {
+        if trimmed.starts_with(m) {
+            for kw in &keywords {
+                if trimmed.contains(kw) { return true; }
+            }
+        }
+    }
+    false
+}
+
+fn is_php_function_line(trimmed: &str) -> bool {
+    let modifiers = ["public ", "private ", "protected ", "static ",
+                     "abstract ", "final "];
+    if trimmed.starts_with("function ") { return true; }
+    modifiers.iter().any(|m| trimmed.starts_with(m) && trimmed.contains("function "))
+}
+
+/// Vue/Svelte Single File Component skeleton.
+///
+/// SFC structure: `<template>`, `<script>`, `<style>` blocks.
+/// Strategy:
+///   - `<template>`: keep structural elements (div, section, header, nav,
+///     component tags), strip text content and most attributes except
+///     key structural ones (v-if, v-for, :key, class, id, slot, #)
+///   - `<script>`: extract using JS/TS skeleton (reuse extract_js_skeleton)
+///   - `<style>`: extract using CSS skeleton (reuse extract_css_skeleton)
+fn extract_sfc_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+
+    #[derive(PartialEq)]
+    enum Block { None, Template, Script, Style }
+    let mut block = Block::None;
+    let mut script_lines = Vec::new();
+    let mut style_lines = Vec::new();
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+
+        // Detect block boundaries
+        if trimmed.starts_with("<template") {
+            block = Block::Template;
+            out.push(lines[i].to_string());
+            i += 1;
+            continue;
+        }
+        if trimmed == "</template>" {
+            block = Block::None;
+            out.push(lines[i].to_string());
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("<script") {
+            out.push(lines[i].to_string());
+            block = Block::Script;
+            i += 1;
+            continue;
+        }
+        if trimmed == "</script>" {
+            // Process accumulated script through JS skeleton
+            let script_content = script_lines.join("\n");
+            let skel = extract_js_skeleton(&script_content);
+            if !skel.trim().is_empty() {
+                out.push(skel);
+            }
+            script_lines.clear();
+            out.push(lines[i].to_string());
+            block = Block::None;
+            i += 1;
+            continue;
+        }
+        if trimmed.starts_with("<style") {
+            out.push(lines[i].to_string());
+            block = Block::Style;
+            i += 1;
+            continue;
+        }
+        if trimmed == "</style>" {
+            let style_content = style_lines.join("\n");
+            let skel = extract_css_skeleton(&style_content);
+            if !skel.trim().is_empty() {
+                out.push(skel);
+            }
+            style_lines.clear();
+            out.push(lines[i].to_string());
+            block = Block::None;
+            i += 1;
+            continue;
+        }
+
+        match block {
+            Block::Script => {
+                script_lines.push(lines[i].to_string());
+            }
+            Block::Style => {
+                style_lines.push(lines[i].to_string());
+            }
+            Block::Template => {
+                // Keep structural HTML: elements with tags, strip text-only lines
+                if trimmed.is_empty() {
+                    if !out.is_empty() { out.push(String::new()); }
+                } else if trimmed.starts_with("<!--") {
+                    // Keep comments (may contain directives like eslint-disable)
+                    out.push(lines[i].to_string());
+                } else if trimmed.starts_with('<') || trimmed.starts_with("{{") || trimmed.ends_with('>') {
+                    // Keep lines with HTML tags or template interpolation
+                    out.push(lines[i].to_string());
+                }
+                // Strip pure text content lines
+            }
+            Block::None => {
+                // Top-level (outside blocks): keep everything
+                out.push(lines[i].to_string());
+            }
+        }
+
+        i += 1;
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
+/// HTML skeleton: keep document structure, strip text content.
+///
+/// Keeps: doctype, structural tags, component references, directives,
+///        script/link/meta tags, comments
+/// Strips: raw text content between tags, most inline styles
+fn extract_html_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let mut in_script = false;
+    let mut in_style = false;
+    let mut script_lines = Vec::new();
+    let mut style_lines = Vec::new();
+
+    for line in &lines {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            continue;
+        }
+
+        let trimmed_lower = trimmed.to_lowercase();
+
+        // Track <script> blocks — delegate to JS skeleton
+        if trimmed_lower.starts_with("<script") {
+            out.push(line.to_string());
+            // Self-closing or inline: <script src="..."></script>
+            if trimmed_lower.contains("</script") {
+                // Complete tag on one line — no script block to extract
+                continue;
+            }
+            in_script = true;
+            continue;
+        }
+        if trimmed_lower.starts_with("</script") {
+            let js = script_lines.join("\n");
+            let skel = extract_js_skeleton(&js);
+            if !skel.trim().is_empty() {
+                out.push(skel);
+            }
+            script_lines.clear();
+            in_script = false;
+            out.push(line.to_string());
+            continue;
+        }
+        if in_script {
+            script_lines.push(line.to_string());
+            continue;
+        }
+
+        // Track <style> blocks — delegate to CSS skeleton
+        if trimmed_lower.starts_with("<style") {
+            out.push(line.to_string());
+            if trimmed_lower.contains("</style") {
+                continue;
+            }
+            in_style = true;
+            continue;
+        }
+        if trimmed_lower.starts_with("</style") {
+            let css = style_lines.join("\n");
+            let skel = extract_css_skeleton(&css);
+            if !skel.trim().is_empty() {
+                out.push(skel);
+            }
+            style_lines.clear();
+            in_style = false;
+            out.push(line.to_string());
+            continue;
+        }
+        if in_style {
+            style_lines.push(line.to_string());
+            continue;
+        }
+
+        // Keep structural lines (tags, comments, doctype)
+        if trimmed.starts_with("<!") || trimmed.starts_with('<') || trimmed.ends_with('>')
+            || trimmed.starts_with("<!--")
+        {
+            out.push(line.to_string());
+        }
+        // Strip pure text lines (between tags)
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
+}
+
+/// CSS/SCSS/LESS skeleton: keep selectors, @rules, custom properties.
+/// Strip property-value declarations (the bulk of CSS).
+///
+/// Keeps: selectors (lines ending with `{`), closing braces,
+///        @import/@media/@keyframes/@font-face, CSS custom properties (--),
+///        comments
+/// Strips: property: value; lines
+fn extract_css_skeleton(content: &str) -> String {
+    let mut out = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+
+    for line in &lines {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            if !out.is_empty() { out.push(String::new()); }
+            continue;
+        }
+
+        // Comments
+        if trimmed.starts_with("/*") || trimmed.starts_with("*") || trimmed.starts_with("//") {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // @rules: @import, @media, @keyframes, @font-face, @charset, @mixin, @include
+        if trimmed.starts_with('@') {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // Selectors (lines containing { or just a selector)
+        if trimmed.ends_with('{') || trimmed.ends_with(',') {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // Closing braces
+        if trimmed.starts_with('}') || trimmed == "}" {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // CSS custom properties (variables)
+        if trimmed.starts_with("--") {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // SCSS/LESS variables
+        if trimmed.starts_with('$') || trimmed.starts_with('@') {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // SCSS: nesting selectors (lines that contain { in the middle)
+        if trimmed.contains('{') {
+            out.push(line.to_string());
+            continue;
+        }
+
+        // Strip regular property: value; declarations
+    }
+
+    while out.last().is_some_and(|l: &String| l.trim().is_empty()) { out.pop(); }
+    out.join("\n")
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -852,5 +2116,458 @@ export function validate(config: Config): Result<Config> {
         // All imports, no bodies — skeleton ≈ original
         let code = "import os\nimport sys\nimport json\nimport time\nimport math\n";
         assert!(extract_skeleton(code, "imports.py").is_none());
+    }
+
+    #[test]
+    fn test_go_skeleton() {
+        let code = r#"
+package handlers
+
+import (
+    "fmt"
+    "net/http"
+)
+
+// HandleRequest processes incoming HTTP requests.
+type Config struct {
+    Port    int
+    Host    string
+    Debug   bool
+}
+
+func HandleRequest(w http.ResponseWriter, r *http.Request) {
+    body := readBody(r)
+    if body == nil {
+        http.Error(w, "bad request", 400)
+        return
+    }
+    result := processBody(body)
+    fmt.Fprintf(w, "%s", result)
+}
+
+func (s *Server) Start() error {
+    listener, err := net.Listen("tcp", s.addr)
+    if err != nil {
+        return err
+    }
+    return s.serve(listener)
+}
+"#.trim();
+
+        let skel = extract_skeleton(code, "handler.go").unwrap();
+        assert!(skel.contains("package handlers"), "Should keep package");
+        assert!(skel.contains("\"net/http\""), "Should keep imports");
+        assert!(skel.contains("type Config struct"), "Should keep type def");
+        assert!(skel.contains("Port    int"), "Should keep struct fields");
+        assert!(skel.contains("func HandleRequest("), "Should keep func sig");
+        assert!(skel.contains("func (s *Server) Start()"), "Should keep method sig");
+        assert!(!skel.contains("readBody(r)"), "Should strip func body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_java_skeleton() {
+        let code = r#"
+package com.example.service;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+/**
+ * User service for managing users.
+ */
+@Service
+public class UserService {
+    private final UserRepository repo;
+    private final CacheManager cache;
+
+    @Autowired
+    public UserService(UserRepository repo, CacheManager cache) {
+        this.repo = repo;
+        this.cache = cache;
+        this.init();
+        logger.info("UserService initialized");
+    }
+
+    public Optional<User> findById(Long id) {
+        User cached = cache.get("user:" + id);
+        if (cached != null) {
+            logger.debug("Cache hit for user {}", id);
+            return Optional.of(cached);
+        }
+        Optional<User> user = repo.findById(id);
+        user.ifPresent(u -> cache.put("user:" + id, u));
+        return user.map(this::enrichUser);
+    }
+
+    public List<User> findAll() {
+        List<User> users = repo.findAll();
+        return users.stream()
+            .filter(u -> u.isActive())
+            .map(this::enrichUser)
+            .sorted((a, b) -> a.getName().compareTo(b.getName()))
+            .collect(Collectors.toList());
+    }
+
+    private User enrichUser(User user) {
+        user.setFullName(user.getFirst() + " " + user.getLast());
+        user.setDisplayName(user.getFullName().toLowerCase());
+        user.setLastAccessed(Instant.now());
+        return user;
+    }
+}
+"#.trim();
+
+        let skel = extract_skeleton(code, "UserService.java").unwrap();
+        assert!(skel.contains("package com.example.service;"), "Should keep package");
+        assert!(skel.contains("import java.util.List;"), "Should keep imports");
+        assert!(skel.contains("@Service"), "Should keep annotations");
+        assert!(skel.contains("public class UserService"), "Should keep class");
+        assert!(skel.contains("private final UserRepository repo;"), "Should keep fields");
+        assert!(skel.contains("public Optional<User> findById(Long id)"), "Should keep method sig");
+        assert!(!skel.contains("Cache hit"), "Should strip method body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_cpp_skeleton() {
+        let code = r#"
+#include <iostream>
+#include <vector>
+#include <string>
+
+namespace app {
+
+class Calculator {
+public:
+    int add(int a, int b) {
+        return a + b;
+    }
+
+    double multiply(double a, double b) {
+        double result = a * b;
+        if (result > 1000) {
+            result = 1000;
+        }
+        return result;
+    }
+
+private:
+    std::vector<int> history;
+};
+
+int main(int argc, char* argv[]) {
+    Calculator calc;
+    int result = calc.add(1, 2);
+    std::cout << result << std::endl;
+    return 0;
+}
+
+} // namespace app
+"#.trim();
+
+        let skel = extract_skeleton(code, "calc.cpp").unwrap();
+        assert!(skel.contains("#include <iostream>"), "Should keep includes");
+        assert!(skel.contains("namespace app"), "Should keep namespace");
+        assert!(skel.contains("class Calculator"), "Should keep class");
+        assert!(skel.contains("int add(int a, int b)"), "Should keep method sig");
+        assert!(skel.contains("private:"), "Should keep access specifiers");
+        assert!(!skel.contains("a + b"), "Should strip method body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_ruby_skeleton() {
+        let code = r#"
+require 'json'
+require_relative 'helpers'
+
+module PaymentGateway
+  class Processor
+    attr_accessor :api_key, :timeout
+
+    MAX_RETRIES = 3
+
+    def initialize(api_key)
+      @api_key = api_key
+      @timeout = 30
+      @retries = 0
+    end
+
+    def process_payment(amount, currency)
+      validate_amount(amount)
+      response = make_request(amount, currency)
+      if response.success?
+        log_success(response)
+        response.transaction_id
+      else
+        handle_failure(response)
+      end
+    end
+
+    private
+
+    def validate_amount(amount)
+      raise ArgumentError, "Amount must be positive" unless amount > 0
+    end
+
+    def make_request(amount, currency)
+      HTTP.post("/charge", body: { amount: amount, currency: currency })
+    end
+  end
+end
+"#.trim();
+
+        let skel = extract_skeleton(code, "processor.rb").unwrap();
+        assert!(skel.contains("require 'json'"), "Should keep require");
+        assert!(skel.contains("require_relative 'helpers'"), "Should keep require_relative");
+        assert!(skel.contains("module PaymentGateway"), "Should keep module");
+        assert!(skel.contains("class Processor"), "Should keep class");
+        assert!(skel.contains("attr_accessor"), "Should keep attr_accessor");
+        assert!(skel.contains("MAX_RETRIES = 3"), "Should keep constants");
+        assert!(skel.contains("def initialize"), "Should keep def signatures");
+        assert!(skel.contains("def process_payment"), "Should keep def signatures");
+        // The skeleton keeps "def validate_amount" as a signature, but should NOT
+        // contain the CALL to validate_amount inside process_payment's body.
+        // Check that body-only content like log_success and HTTP.post are stripped.
+        assert!(!skel.contains("log_success"), "Should strip method body calls");
+        assert!(!skel.contains("HTTP.post"), "Should strip method body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_php_skeleton() {
+        let code = r#"
+<?php
+
+namespace App\Services;
+
+use App\Models\User;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Handles user authentication.
+ */
+class AuthService {
+    private string $secretKey;
+    protected int $maxAttempts = 5;
+
+    public function __construct(string $secretKey) {
+        $this->secretKey = $secretKey;
+        $this->attempts = 0;
+    }
+
+    public function authenticate(string $email, string $password): ?User {
+        $user = User::findByEmail($email);
+        if (!$user || !password_verify($password, $user->password_hash)) {
+            Log::warning("Failed login for: {$email}");
+            return null;
+        }
+        return $user;
+    }
+
+    private function generateToken(User $user): string {
+        return hash_hmac('sha256', $user->id . time(), $this->secretKey);
+    }
+}
+"#.trim();
+
+        let skel = extract_skeleton(code, "auth.php").unwrap();
+        assert!(skel.contains("<?php"), "Should keep PHP tag");
+        assert!(skel.contains("namespace App\\Services"), "Should keep namespace");
+        assert!(skel.contains("use App\\Models\\User"), "Should keep use");
+        assert!(skel.contains("class AuthService"), "Should keep class");
+        assert!(skel.contains("private string $secretKey"), "Should keep properties");
+        assert!(skel.contains("public function __construct"), "Should keep method sigs");
+        assert!(skel.contains("public function authenticate"), "Should keep method sigs");
+        assert!(!skel.contains("findByEmail"), "Should strip method body");
+        assert!(!skel.contains("hash_hmac"), "Should strip method body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    // ── Frontend: Vue/Svelte SFC skeleton ────────────────────────────
+
+    #[test]
+    fn test_vue_sfc_skeleton() {
+        let code = r#"
+<template>
+  <div class="app">
+    <h1>{{ title }}</h1>
+    <p>Some descriptive text about the application</p>
+    <UserCard v-for="user in users" :key="user.id" :user="user" />
+    <button @click="handleSubmit">Submit</button>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import UserCard from './components/UserCard.vue'
+
+const title = ref('Dashboard')
+const users = ref([])
+
+function handleSubmit() {
+  const data = collectFormData()
+  const validated = validateFormData(data)
+  if (!validated) {
+    showError('Invalid form data')
+    return
+  }
+  api.post('/submit', data)
+  users.value = []
+  showSuccess('Form submitted successfully')
+  resetForm()
+  trackAnalytics('form_submit', { count: users.value.length })
+}
+
+const activeUsers = computed(() => {
+  return users.value.filter(u => u.active)
+})
+
+function resetForm() {
+  document.querySelectorAll('input').forEach(input => {
+    input.value = ''
+    input.classList.remove('error')
+  })
+  title.value = 'Dashboard'
+}
+</script>
+
+<style scoped>
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+h1 {
+  color: #333;
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.user-card {
+  padding: 1rem;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease;
+}
+</style>
+"#.trim();
+
+        let skel = extract_skeleton(code, "Dashboard.vue").unwrap();
+        assert!(skel.contains("<template>"), "Should keep template tag");
+        assert!(skel.contains("</template>"), "Should keep closing template");
+        assert!(skel.contains("<div class=\"app\">"), "Should keep structural elements");
+        assert!(skel.contains("UserCard"), "Should keep component references");
+        assert!(skel.contains("<script"), "Should keep script tag");
+        assert!(skel.contains("import"), "Should keep imports in script");
+        assert!(skel.contains("<style"), "Should keep style tag");
+        assert!(skel.contains(".app {"), "Should keep CSS selectors");
+        assert!(!skel.contains("collectFormData"), "Should strip JS function body");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_html_skeleton() {
+        let code = r#"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My App</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="main-nav">
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+    </nav>
+  </header>
+  <main id="content">
+    Welcome to the application. This is some paragraph text
+    that describes what the application does.
+  </main>
+  <script>
+    function initApp() {
+      const data = fetchData()
+      renderDashboard(data)
+      return data
+    }
+    initApp()
+  </script>
+</body>
+</html>
+"#.trim();
+
+        let skel = extract_skeleton(code, "index.html").unwrap();
+        assert!(skel.contains("<!DOCTYPE html>"), "Should keep doctype");
+        assert!(skel.contains("<html"), "Should keep html tag");
+        assert!(skel.contains("<head>"), "Should keep head");
+        assert!(skel.contains("<script src=\"app.js\">"), "Should keep script tags");
+        assert!(skel.contains("<link"), "Should keep link tags");
+        assert!(skel.contains("<nav class=\"main-nav\">"), "Should keep structural elements");
+        assert!(!skel.contains("Welcome to the application"), "Should strip text content");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
+    }
+
+    #[test]
+    fn test_css_skeleton() {
+        let code = r#"
+/* Base styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter');
+
+:root {
+  --primary-color: #3498db;
+  --secondary-color: #2ecc71;
+  --spacing-unit: 8px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.header {
+  background: var(--primary-color);
+  color: white;
+  padding: calc(var(--spacing-unit) * 3);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.nav-link {
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+"#.trim();
+
+        let skel = extract_skeleton(code, "styles.css").unwrap();
+        assert!(skel.contains("/* Base styles */"), "Should keep comments");
+        assert!(skel.contains("@import"), "Should keep @import");
+        assert!(skel.contains(":root {"), "Should keep selectors");
+        assert!(skel.contains("--primary-color"), "Should keep custom properties");
+        assert!(skel.contains("@media"), "Should keep media queries");
+        assert!(skel.contains(".header {"), "Should keep class selectors");
+        assert!(skel.contains("@keyframes"), "Should keep keyframes");
+        assert!(!skel.contains("text-decoration"), "Should strip property declarations");
+        assert!(!skel.contains("font-weight"), "Should strip property declarations");
+        assert!(skel.len() < code.len(), "Skeleton should be shorter");
     }
 }

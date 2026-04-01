@@ -551,10 +551,16 @@ def test_export_import_preserves_prism_covariance():
     import json as _json
     state = _json.loads(json_state)
     prism = state.get("prism_optimizer", {})
-    cov_data = prism.get("covariance", {}).get("data", [1e-4]*16)
-    # SymMatrixN stores 4x4 covariance as flat row-major Vec<f64> (length 16).
-    # Diagonal elements are at indices i*4+i: [0, 5, 10, 15].
-    diagonal_vals = [cov_data[i * 4 + i] for i in range(4)]
+    cov_data = prism.get("covariance", {}).get("data", [])
+    # Covariance is serialized as a nested list of lists (row-major 2D array).
+    # Extract diagonal elements: cov_data[i][i] for each dimension.
+    if cov_data and isinstance(cov_data[0], list):
+        dim = len(cov_data)
+        diagonal_vals = [cov_data[i][i] for i in range(dim)]
+    else:
+        # Flat format fallback: data is a flat Vec<f64>
+        dim = int(len(cov_data) ** 0.5)
+        diagonal_vals = [cov_data[i * dim + i] for i in range(dim) if i * dim + i < len(cov_data)]
     assert any(abs(v - 1e-4) > 1e-6 for v in diagonal_vals), (
         f"PRISM covariance must be non-trivial after feedback. Diagonal: {diagonal_vals}"
     )

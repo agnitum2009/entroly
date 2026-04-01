@@ -27,20 +27,37 @@ logger = logging.getLogger("entroly")
 # File extensions to index (covers 95%+ of production codebases)
 SUPPORTED_EXTENSIONS = frozenset({
     # Systems
-    ".rs", ".c", ".cpp", ".h", ".hpp", ".zig",
+    ".rs", ".c", ".cpp", ".h", ".hpp", ".cc", ".hxx", ".zig",
     # Web / JS / TS
-    ".js", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
+    ".js", ".ts", ".jsx", ".tsx", ".mjs", ".mts", ".cjs", ".cts",
+    ".vue", ".svelte",
     # Python
     ".py", ".pyi",
     # JVM
     ".java", ".kt", ".scala",
+    # .NET / C#
+    ".cs", ".csx", ".fs",
     # Go
     ".go",
+    # Swift / iOS
+    ".swift",
     # Ruby
     ".rb",
+    # PHP
+    ".php",
+    # Dart / Flutter
+    ".dart",
+    # Elixir / Erlang
+    ".ex", ".exs",
+    # Lua
+    ".lua",
+    # R
+    ".r",
     # Shell / Config
     ".sh", ".bash", ".zsh",
     ".toml", ".yaml", ".yml", ".json",
+    # Terraform / IaC
+    ".tf", ".hcl",
     # Docs that matter
     ".md", ".rst",
     # SQL

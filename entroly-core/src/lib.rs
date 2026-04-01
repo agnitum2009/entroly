@@ -106,6 +106,7 @@ pub struct EntrolyEngine {
     // Exploration
     total_explorations: u64,
     exploration_rate: f64,
+    rng_state: u64,
 
     // Last optimization snapshot (for explainability)
     last_optimization: Option<OptimizationSnapshot>,
@@ -294,6 +295,9 @@ impl EntrolyEngine {
             max_fragments,
             total_explorations: 0,
             exploration_rate: exploration_rate.clamp(0.0, 1.0),
+            // xorshift64 PRNG seeded from instance_id (already has good entropy)
+            // Avoids deterministic hash-based exploration that can miss rate targets
+            rng_state: instance_id | 1, // ensure non-zero seed
             last_optimization: None,
             lsh_index: lsh::LshIndex::new(),
             context_scorer: lsh::ContextScorer::default(),
@@ -633,16 +637,15 @@ impl EntrolyEngine {
             // α₀ is used in the exploration swap code (UCB score for picking swap target).
             let alpha_0 = 2.0_f64;
             let should_explore = if self.exploration_rate > 0.0 {
-                // Configured rate: coin flip with the given probability.
-                // This ensures repeated calls produce varied selections.
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                self.total_optimizations.hash(&mut hasher);
-                query.hash(&mut hasher);
-                let coin = (hasher.finish() % 10000) as f64 / 10000.0;
+                // xorshift64 PRNG coin flip — uniform distribution over [0, 1).
+                let mut x = self.rng_state;
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                self.rng_state = x;
+                let coin = (x % 10000) as f64 / 10000.0;
                 coin < self.exploration_rate
             } else {
-                // Rate == 0: exploration explicitly disabled.
                 false
             };
 
@@ -983,12 +986,13 @@ impl EntrolyEngine {
                             // Pick exploration target: random when using rate-based exploration,
                             // UCB-max when using threshold-based exploration.
                             let explore_idx = if self.exploration_rate > 0.0 && unselected.len() > 1 {
-                                // Hash-based pseudo-random index for deterministic-but-varied selection
-                                use std::hash::{Hash, Hasher};
-                                let mut h = std::collections::hash_map::DefaultHasher::new();
-                                self.total_optimizations.hash(&mut h);
-                                pos.hash(&mut h);
-                                let pick = (h.finish() as usize) % unselected.len();
+                                // xorshift64 PRNG for varied exploration target selection
+                                let mut x = self.rng_state;
+                                x ^= x << 13;
+                                x ^= x >> 7;
+                                x ^= x << 17;
+                                self.rng_state = x;
+                                let pick = (x as usize) % unselected.len();
                                 unselected[pick]
                             } else {
                                 // RAVEN-UCB: pick unselected fragment with highest UCB score
@@ -2337,6 +2341,7 @@ impl EntrolyEngine {
             total_fragments_ingested: self.total_fragments_ingested,
             total_duplicates_caught: self.total_duplicates_caught,
             total_explorations: self.total_explorations,
+            rng_state: self.rng_state,
             gradient_temperature: self.gradient_temperature,
             gradient_norm_ema: self.gradient_norm_ema,
             // EGSC cache warm-start: serialize cache state as nested JSON
@@ -2389,6 +2394,7 @@ impl EntrolyEngine {
         self.total_fragments_ingested = state.total_fragments_ingested;
         self.total_duplicates_caught = state.total_duplicates_caught;
         self.total_explorations = state.total_explorations;
+        if state.rng_state != 0 { self.rng_state = state.rng_state; }
         self.gradient_temperature = state.gradient_temperature;
         self.gradient_norm_ema = state.gradient_norm_ema;
         let mut fragment_entries: Vec<(&String, &ContextFragment)> = self.fragments.iter().collect();
@@ -2922,6 +2928,7 @@ struct EngineState<'a> {
     total_fragments_ingested: u64,
     total_duplicates_caught: u64,
     total_explorations: u64,
+    rng_state: u64,
     gradient_temperature: f64,
     gradient_norm_ema: f64,
     /// EGSC cache snapshot (JSON) — warm-start persistence.
@@ -2964,6 +2971,8 @@ struct OwnedEngineState {
     total_fragments_ingested: u64,
     total_duplicates_caught: u64,
     total_explorations: u64,
+    #[serde(default = "default_rng_state")]
+    rng_state: u64,
     #[serde(default = "default_gradient_temperature")]
     gradient_temperature: f64,
     #[serde(default)]
@@ -2994,6 +3003,7 @@ fn default_w_frequency() -> f64 { 0.25 }
 fn default_w_semantic() -> f64 { 0.25 }
 fn default_w_entropy() -> f64 { 0.20 }
 fn default_gradient_temperature() -> f64 { 2.0 }
+fn default_rng_state() -> u64 { 1 }
 
 // ═══════════════════════════════════════════════════════════════════
 // Standalone PyO3 functions (for direct access to math engines)
@@ -3486,6 +3496,7 @@ mod tests {
             total_fragments_ingested: 5,
             total_duplicates_caught: 1,
             total_explorations: 0,
+            rng_state: 1,
             gradient_temperature: 2.0,
             gradient_norm_ema: 0.0,
             cache_snapshot: None,

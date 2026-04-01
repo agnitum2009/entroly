@@ -192,11 +192,53 @@ def _detect_project_type() -> dict:
                 detected.append(lang)
                 break
 
+    # Detect JS/TS frameworks for richer project context
+    frameworks = []
+    framework_indicators = {
+        "Next.js": ["next.config.js", "next.config.mjs", "next.config.ts"],
+        "Angular": ["angular.json"],
+        "Nuxt": ["nuxt.config.ts", "nuxt.config.js"],
+        "Remix": ["remix.config.js", "remix.config.ts"],
+        "Vite": ["vite.config.ts", "vite.config.js", "vite.config.mts"],
+        "Svelte": ["svelte.config.js"],
+        "Astro": ["astro.config.mjs"],
+        "Gatsby": ["gatsby-config.js", "gatsby-config.ts"],
+        "Expo": ["app.json", "expo.json"],
+    }
+    for fw, fw_files in framework_indicators.items():
+        for f in fw_files:
+            if os.path.exists(os.path.join(cwd, f)):
+                frameworks.append(fw)
+                break
+
+    # Check package.json for React/Vue/Angular dependencies
+    pkg_path = os.path.join(cwd, "package.json")
+    if os.path.isfile(pkg_path):
+        try:
+            with open(pkg_path, "r") as f:
+                pkg = json.load(f)
+            all_deps = set(pkg.get("dependencies", {}).keys()) | set(pkg.get("devDependencies", {}).keys())
+            if "react" in all_deps and "Next.js" not in frameworks and "Remix" not in frameworks:
+                frameworks.append("React")
+            if "vue" in all_deps and "Nuxt" not in frameworks:
+                frameworks.append("Vue")
+            if "@angular/core" in all_deps and "Angular" not in frameworks:
+                frameworks.append("Angular")
+            if "express" in all_deps:
+                frameworks.append("Express")
+            if "fastify" in all_deps:
+                frameworks.append("Fastify")
+            if "nest" in all_deps or "@nestjs/core" in all_deps:
+                frameworks.append("NestJS")
+        except (json.JSONDecodeError, OSError, KeyError):
+            pass
+
     project_name = os.path.basename(cwd)
     return {
         "name": project_name,
         "languages": detected or ["unknown"],
         "primary": detected[0] if detected else "unknown",
+        "frameworks": frameworks,
     }
 
 
@@ -304,7 +346,10 @@ def cmd_init(args):
 
     # Detect project
     project = _detect_project_type()
-    print(f"  {C.GRAY}Project:{C.RESET}  {C.BOLD}{project['name']}{C.RESET} ({', '.join(project['languages'])})")
+    langs = ', '.join(project['languages'])
+    fw = project.get('frameworks', [])
+    fw_str = f" + {', '.join(fw)}" if fw else ""
+    print(f"  {C.GRAY}Project:{C.RESET}  {C.BOLD}{project['name']}{C.RESET} ({langs}{fw_str})")
 
     # Detect AI tools
     tools = _detect_ai_tool()
@@ -1120,7 +1165,10 @@ def cmd_go(args):
 
     # Step 1: Detect project
     project = _detect_project_type()
-    print(f"  {C.GRAY}Project:{C.RESET}  {C.BOLD}{project['name']}{C.RESET} ({', '.join(project['languages'])})")
+    langs = ', '.join(project['languages'])
+    fw = project.get('frameworks', [])
+    fw_str = f" + {', '.join(fw)}" if fw else ""
+    print(f"  {C.GRAY}Project:{C.RESET}  {C.BOLD}{project['name']}{C.RESET} ({langs}{fw_str})")
 
     # Step 2: Auto-detect AI tools and write configs
     tools = _detect_ai_tool()
