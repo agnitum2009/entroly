@@ -29,8 +29,10 @@ Single-file mutation discipline:
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -493,9 +495,6 @@ if __name__ == "__main__":
 #
 # The existing bench-based autotune above is untouched. These are additive.
 # ═══════════════════════════════════════════════════════════════════════════
-
-import math
-import re
 
 WEIGHT_KEYS = ["w_r", "w_f", "w_s", "w_e"]
 DECAY_GAMMA = 0.995
