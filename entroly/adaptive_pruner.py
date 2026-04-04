@@ -50,9 +50,9 @@ class EntrolyPruner:
         self._pruner = _RustPruner() if _PRUNER_AVAILABLE else None
         self._fragment_features: Dict[str, Dict[str, float]] = {}
         if _PRUNER_AVAILABLE:
-            logger.info("AdaptivePruner: ebbiforge_core available — RL weight learning active")
+            logger.info("AdaptivePruner: ebbiforge_core available -- RL weight learning active")
         else:
-            logger.info("AdaptivePruner: ebbiforge_core not available — using static weights")
+            logger.info("AdaptivePruner: ebbiforge_core not available -- using static weights")
 
     @property
     def available(self) -> bool:
@@ -141,7 +141,7 @@ class FragmentGuard:
     def __init__(self):
         self._guard = _RustGuard() if _GUARD_AVAILABLE else None
         if _GUARD_AVAILABLE:
-            logger.info("FragmentGuard: CodeQualityGuard active — scanning ingested fragments")
+            logger.info("FragmentGuard: CodeQualityGuard active -- scanning ingested fragments")
 
     @property
     def available(self) -> bool:

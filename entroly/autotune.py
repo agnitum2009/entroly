@@ -39,6 +39,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import logging
+
+logger = logging.getLogger("entroly")
+
+
+def _log(msg: str = "") -> None:
+    """Print to stderr so autotune output never corrupts MCP stdio transport."""
+    print(msg, file=sys.stderr)
+
+
 # -- Constants ---------------------------------------------------------------
 
 BENCH_DIR = Path(__file__).parent.parent / "bench"
@@ -102,8 +112,7 @@ def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
     try:
         from entroly_core import EntrolyEngine
     except ImportError:
-        print("ERROR: entroly_core not available. Run `maturin develop` first.",
-              file=sys.stderr)
+        _log("ERROR: entroly_core not available. Run `maturin develop` first.")
         sys.exit(1)
 
     total_information = 0.0
@@ -350,24 +359,24 @@ def run_autotune(iterations: int = 100,
     cases = load_cases()
     config = load_config()
 
-    print(f"Entroly Autotune -- {len(cases)} benchmark cases loaded")
-    print(f"Time budget per case: {time_budget}s")
+    _log(f"Entroly Autotune -- {len(cases)} benchmark cases loaded")
+    _log(f"Time budget per case: {time_budget}s")
 
-    print("\n--- Baseline evaluation ---")
+    _log("\n--- Baseline evaluation ---")
     baseline = evaluate(config, cases, time_budget)
     baseline_score = composite_score(baseline)
-    print(f"Baseline score: {baseline_score:.4f} "
-          f"(recall={baseline.recall_accuracy:.3f}, "
-          f"efficiency={baseline.context_efficiency:.6f}, "
-          f"avg_ms={baseline.avg_wall_time_ms:.1f})")
+    _log(f"Baseline score: {baseline_score:.4f} "
+         f"(recall={baseline.recall_accuracy:.3f}, "
+         f"efficiency={baseline.context_efficiency:.6f}, "
+         f"avg_ms={baseline.avg_wall_time_ms:.1f})")
     log_result(0, config, baseline, "keep", "baseline")
 
     if bench_only:
-        print("\nPer-case breakdown:")
+        _log("\nPer-case breakdown:")
         for pc in baseline.per_case:
-            print(f"  {pc['case_id']}: recall={pc.get('recall', 0):.2f}, "
-                  f"tokens={pc.get('tokens_used', 0)}, "
-                  f"wall_ms={pc.get('wall_ms', 0):.1f}")
+            _log(f"  {pc['case_id']}: recall={pc.get('recall', 0):.2f}, "
+                 f"tokens={pc.get('tokens_used', 0)}, "
+                 f"wall_ms={pc.get('wall_ms', 0):.1f}")
         return
 
     best_score = baseline_score
@@ -383,8 +392,8 @@ def run_autotune(iterations: int = 100,
     # Base alpha = 0.3 (cautious). Doubles when improvement > 5% of score.
     ema_base_alpha = 0.3
 
-    print(f"\n--- Starting {iterations} experiments (cautious updates) ---")
-    print("(EMA blending + Polyak averaging + drift penalty)\n")
+    _log(f"\n--- Starting {iterations} experiments (cautious updates) ---")
+    _log("(EMA blending + Polyak averaging + drift penalty)\n")
 
     for i in range(1, iterations + 1):
         candidate = mutate_config(best_config)
@@ -412,7 +421,7 @@ def run_autotune(iterations: int = 100,
             polyak_count += 1
             polyak_avg = _polyak_update(polyak_avg, best_config, polyak_count)
 
-            marker = f">>> α={alpha:.2f}"
+            marker = f">>> a={alpha:.2f}"
         elif (score == best_score and
               result.avg_wall_time_ms < baseline.avg_wall_time_ms):
             status = "keep"
@@ -426,35 +435,35 @@ def run_autotune(iterations: int = 100,
         description = f"{mutated_param}: {old_val} -> {new_val}"
         log_result(i, candidate, result, status, description)
 
-        print(f"{marker} [{i:04d}] score={score:.4f} "
-              f"(recall={result.recall_accuracy:.3f}, "
-              f"eff={result.context_efficiency:.6f}) "
-              f"| {status:7s} | {description}")
+        _log(f"{marker} [{i:04d}] score={score:.4f} "
+             f"(recall={result.recall_accuracy:.3f}, "
+             f"eff={result.context_efficiency:.6f}) "
+             f"| {status:7s} | {description}")
 
     # ── Final: evaluate Polyak average ──
     if polyak_count > 2:
-        print(f"\n--- Evaluating Polyak average ({polyak_count} samples) ---")
+        _log(f"\n--- Evaluating Polyak average ({polyak_count} samples) ---")
         polyak_result = evaluate(polyak_avg, cases, time_budget)
         polyak_score = composite_score(polyak_result, polyak_avg, defaults)
-        print(f"Polyak score: {polyak_score:.4f} vs best: {best_score:.4f}")
+        _log(f"Polyak score: {polyak_score:.4f} vs best: {best_score:.4f}")
 
         if polyak_score >= best_score:
-            print("  → Polyak average is at least as good — using it")
+            _log("  -> Polyak average is at least as good -- using it")
             best_config = polyak_avg
             best_score = polyak_score
         else:
-            print("  → Best single config is better — keeping it")
+            _log("  -> Best single config is better -- keeping it")
 
-    print("\n--- Summary ---")
-    print(f"Total experiments: {iterations}")
-    print(f"Improvements found: {improvements}")
-    print(f"Baseline score: {baseline_score:.4f}")
-    print(f"Best score: {best_score:.4f}")
+    _log("\n--- Summary ---")
+    _log(f"Total experiments: {iterations}")
+    _log(f"Improvements found: {improvements}")
+    _log(f"Baseline score: {baseline_score:.4f}")
+    _log(f"Best score: {best_score:.4f}")
     delta_final = ((best_score - baseline_score) / max(baseline_score, 0.001)) * 100
-    print(f"Improvement: {delta_final:.1f}%")
-    print(f"Polyak samples: {polyak_count}")
-    print(f"\nBest config saved to {CONFIG_PATH}")
-    print(f"Full results log: {RESULTS_PATH}")
+    _log(f"Improvement: {delta_final:.1f}%")
+    _log(f"Polyak samples: {polyak_count}")
+    _log(f"\nBest config saved to {CONFIG_PATH}")
+    _log(f"Full results log: {RESULTS_PATH}")
 
     save_config(best_config)
 

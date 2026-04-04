@@ -204,7 +204,7 @@ class VaultManager:
 
         file_path.write_text(artifact.to_markdown(), encoding="utf-8")
 
-        logger.info(f"Vault: wrote belief '{artifact.entity}' â†’ {file_path}")
+        logger.info(f"Vault: wrote belief '{artifact.entity}' -> {file_path}")
         return {
             "status": "written",
             "directory": "beliefs",
@@ -281,7 +281,7 @@ class VaultManager:
                 artifact.confidence_delta,
             )
 
-        logger.info(f"Vault: wrote verification â†’ {file_path}")
+        logger.info(f"Vault: wrote verification -> {file_path}")
         return {
             "status": "written",
             "directory": "verification",
@@ -311,7 +311,7 @@ class VaultManager:
             encoding="utf-8",
         )
 
-        logger.info(f"Vault: wrote action '{title}' â†’ {file_path}")
+        logger.info(f"Vault: wrote action '{title}' -> {file_path}")
         return {
             "status": "written",
             "directory": "actions",
@@ -445,7 +445,7 @@ class VaultManager:
                     md.write_text(updated, encoding="utf-8")
                     logger.info(
                         f"Vault: updated belief {claim_id} confidence "
-                        f"{old_conf:.2f} â†’ {new_conf:.2f}"
+                        f"{old_conf:.2f} â†' {new_conf:.2f}"
                     )
                     break
             except Exception as e:

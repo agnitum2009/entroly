@@ -960,13 +960,13 @@ class PromptCompilerProxy:
                 if rephrase_result:
                     signal_type, prev_ids = rephrase_result
                     if signal_type == "rephrase" and prev_ids:
-                        logger.debug("Rephrase detected → record_failure(%d ids)", len(prev_ids))
+                        logger.debug("Rephrase detected -> record_failure(%d ids)", len(prev_ids))
                         try:
                             self.engine.record_failure(prev_ids)
                         except Exception:
                             pass
                     elif signal_type == "topic_change" and prev_ids:
-                        logger.debug("Topic change → record_success(%d ids)", len(prev_ids))
+                        logger.debug("Topic change -> record_success(%d ids)", len(prev_ids))
                         try:
                             self.engine.record_success(prev_ids)
                         except Exception:
@@ -1323,7 +1323,7 @@ class PromptCompilerProxy:
         """Forward a non-streaming request with circuit breaker, retry on 429/5xx, and response validation."""
         # Check circuit breaker
         if not self._breaker.allow_request():
-            logger.warning("Circuit breaker open — forwarding unmodified")
+            logger.warning("Circuit breaker open -- forwarding unmodified")
 
         # Retry loop: 1 initial attempt + up to 2 retries on 429/5xx
         max_retries = 2

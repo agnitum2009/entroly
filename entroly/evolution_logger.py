@@ -177,7 +177,7 @@ class EvolutionLogger:
         )
 
         file_path.write_text(content, encoding="utf-8")
-        logger.info(f"EvolutionLogger: wrote skill gap report → {file_path}")
+        logger.info(f"EvolutionLogger: wrote skill gap report -> {file_path}")
 
         return {
             "status": "written",

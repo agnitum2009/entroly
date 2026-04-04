@@ -509,13 +509,13 @@ def cmd_autotune(args):
 
     # Handle --rollback
     if getattr(args, "rollback", False):
-        print(f"\n{C.CYAN}{C.BOLD}  Entroly Autotune — Rollback{C.RESET}\n")
+        print(f"\n{C.CYAN}{C.BOLD}  Entroly Autotune -- Rollback{C.RESET}\n")
         try:
             from bench.autotune import rollback_config
             config_path = Path(os.path.dirname(__file__)).parent / "tuning_config.json"
             result = rollback_config(config_path)
             if result["status"] == "no_backup_found":
-                print(f"  {C.RED}No backup found — nothing to roll back.{C.RESET}\n")
+                print(f"  {C.RED}No backup found -- nothing to roll back.{C.RESET}\n")
                 return
             print(f"  {C.GREEN}Restored from:{C.RESET} {result['restored_from']}")
             print(f"  {C.GREEN}{C.BOLD}Rollback complete.{C.RESET} Previous config is now active.\n")
@@ -686,7 +686,7 @@ def cmd_benchmark(args):
 
     print(f"  Codebase: {total:,} total tokens\n")
     print(f"  {'Query':<45} {'Raw':>8} {'Entroly':>8} {'Saved':>6}")
-    print(f"  {'─'*45} {'─'*8} {'─'*8} {'─'*6}")
+    print(f"  {'-'*45} {'-'*8} {'-'*8} {'-'*6}")
 
     total_saved = 0
     for q in queries:
@@ -858,7 +858,7 @@ def cmd_clean(args):
     entroly_dir = Path.home() / ".entroly"
 
     if not entroly_dir.exists():
-        print(f"  {C.GRAY}Nothing to clean — {entroly_dir} does not exist.{C.RESET}")
+        print(f"  {C.GRAY}Nothing to clean -- {entroly_dir} does not exist.{C.RESET}")
         return
 
     # Collect what will be removed
@@ -877,7 +877,7 @@ def cmd_clean(args):
         targets.append(("Docker pull cache", pull_cache, 1))
 
     if not targets:
-        print(f"  {C.GRAY}Nothing to clean — no cached state found.{C.RESET}")
+        print(f"  {C.GRAY}Nothing to clean -- no cached state found.{C.RESET}")
         return
 
     print(f"\n{C.CYAN}{C.BOLD}  Entroly Clean{C.RESET}\n")
@@ -993,7 +993,7 @@ def cmd_drift(args):
 
     tuning_path = Path(os.path.dirname(__file__)).parent / "tuning_config.json"
     if not tuning_path.exists():
-        print(f"  {C.GRAY}No tuning_config.json found — using defaults (no drift possible).{C.RESET}\n")
+        print(f"  {C.GRAY}No tuning_config.json found -- using defaults (no drift possible).{C.RESET}\n")
         return
 
     try:
@@ -1123,7 +1123,7 @@ def cmd_batch(args):
             "budget": args.budget,
         })
         if not args.json_output:
-            print(f"  [{i}/{len(queries)}] {query[:60]}... → {len(selected)} fragments, {total_tokens} tokens")
+            print(f"  [{i}/{len(queries)}] {query[:60]}... -> {len(selected)} fragments, {total_tokens} tokens")
 
     if args.json_output:
         print(json.dumps(results, indent=2))
@@ -1180,7 +1180,7 @@ def cmd_go(args):
             except Exception as e:
                 print(f"  {C.YELLOW}Skipped{C.RESET} {tool['name']}: {e}")
     else:
-        print(f"  {C.GRAY}No AI tool detected — proxy mode works with any tool{C.RESET}")
+        print(f"  {C.GRAY}No AI tool detected -- proxy mode works with any tool{C.RESET}")
 
     # Step 3: Initialize engine + auto-index
     from entroly.server import EntrolyEngine
@@ -1241,7 +1241,7 @@ def cmd_go(args):
 
 def cmd_demo(args):
     """entroly demo — quick-win demo mode: before/after comparison (Gap #41)."""
-    print(f"\n{C.CYAN}{C.BOLD}  Entroly Demo{C.RESET} — see the value in 30 seconds\n")
+    print(f"\n{C.CYAN}{C.BOLD}  Entroly Demo{C.RESET} -- see the value in 30 seconds\n")
 
     from entroly.server import EntrolyEngine
     from entroly.auto_index import auto_index
@@ -1351,19 +1351,19 @@ def cmd_doctor(args):
     checks_total += 1
     py_ver = platform.python_version()
     if sys.version_info >= (3, 10):
-        print(f"  {C.GREEN}✓{C.RESET} Python {py_ver}")
+        print(f"  {C.GREEN}+{C.RESET} Python {py_ver}")
         checks_passed += 1
     else:
-        print(f"  {C.RED}✗{C.RESET} Python {py_ver} (need ≥3.10)")
+        print(f"  {C.RED}x{C.RESET} Python {py_ver} (need >=3.10)")
 
     # 2. Check Rust engine
     checks_total += 1
     try:
         import entroly_core  # noqa: F401
-        print(f"  {C.GREEN}✓{C.RESET} Rust engine (entroly-core) loaded")
+        print(f"  {C.GREEN}+{C.RESET} Rust engine (entroly-core) loaded")
         checks_passed += 1
     except ImportError:
-        print(f"  {C.RED}✗{C.RESET} Rust engine not installed (pip install entroly-core)")
+        print(f"  {C.RED}x{C.RESET} Rust engine not installed (pip install entroly-core)")
 
     # 3. Check config validity
     checks_total += 1
@@ -1375,15 +1375,15 @@ def cmd_doctor(args):
             weights = tc.get("weights", {})
             w_sum = sum(weights.values()) if weights else 0
             if abs(w_sum - 1.0) < 0.01:
-                print(f"  {C.GREEN}✓{C.RESET} Config valid (weights sum={w_sum:.3f})")
+                print(f"  {C.GREEN}+{C.RESET} Config valid (weights sum={w_sum:.3f})")
                 checks_passed += 1
             else:
                 print(f"  {C.YELLOW}!{C.RESET} Config: weights sum={w_sum:.3f} (expected ~1.0)")
                 checks_passed += 1  # warning, not failure
         except Exception as e:
-            print(f"  {C.RED}✗{C.RESET} Config error: {e}")
+            print(f"  {C.RED}x{C.RESET} Config error: {e}")
     else:
-        print(f"  {C.GREEN}✓{C.RESET} Config: using defaults (no tuning_config.json)")
+        print(f"  {C.GREEN}+{C.RESET} Config: using defaults (no tuning_config.json)")
         checks_passed += 1
 
     # 4. Check proxy reachability
@@ -1393,7 +1393,7 @@ def cmd_doctor(args):
         import urllib.request
         resp = urllib.request.urlopen(f"http://localhost:{port}/health", timeout=2)
         if resp.status == 200:
-            print(f"  {C.GREEN}✓{C.RESET} Proxy reachable at localhost:{port}")
+            print(f"  {C.GREEN}+{C.RESET} Proxy reachable at localhost:{port}")
             checks_passed += 1
         else:
             print(f"  {C.YELLOW}!{C.RESET} Proxy responded with status {resp.status}")
@@ -1412,9 +1412,9 @@ def cmd_doctor(args):
             import time as _time
             age_hours = (_time.time() - newest) / 3600
             if age_hours < 24:
-                print(f"  {C.GREEN}✓{C.RESET} Index fresh ({age_hours:.1f}h old)")
+                print(f"  {C.GREEN}+{C.RESET} Index fresh ({age_hours:.1f}h old)")
             else:
-                print(f"  {C.YELLOW}!{C.RESET} Index stale ({age_hours:.0f}h old — consider re-indexing)")
+                print(f"  {C.YELLOW}!{C.RESET} Index stale ({age_hours:.0f}h old -- consider re-indexing)")
             checks_passed += 1
         else:
             print(f"  {C.GRAY}-{C.RESET} No index found (will be created on first run)")
@@ -1433,16 +1433,16 @@ def cmd_doctor(args):
             weights = tc.get("weights", defaults)
             drift = sum(abs(weights.get(k, v) - v) for k, v in defaults.items())
             if drift < 0.1:
-                print(f"  {C.GREEN}✓{C.RESET} Weights near defaults (drift={drift:.3f})")
+                print(f"  {C.GREEN}+{C.RESET} Weights near defaults (drift={drift:.3f})")
             elif drift < 0.3:
                 print(f"  {C.YELLOW}!{C.RESET} Weights drifted (drift={drift:.3f})")
             else:
-                print(f"  {C.RED}✗{C.RESET} Weights heavily drifted ({drift:.3f}) — consider autotune --rollback")
+                print(f"  {C.RED}x{C.RESET} Weights heavily drifted ({drift:.3f}) -- consider autotune --rollback")
             checks_passed += 1
         except Exception:
             checks_passed += 1
     else:
-        print(f"  {C.GREEN}✓{C.RESET} Weights: defaults (no drift)")
+        print(f"  {C.GREEN}+{C.RESET} Weights: defaults (no drift)")
         checks_passed += 1
 
     # 7. Check Docker (optional)
@@ -1453,7 +1453,7 @@ def cmd_doctor(args):
             ["docker", "info"], capture_output=True, timeout=5
         )
         if result.returncode == 0:
-            print(f"  {C.GREEN}✓{C.RESET} Docker available")
+            print(f"  {C.GREEN}+{C.RESET} Docker available")
         else:
             print(f"  {C.GRAY}-{C.RESET} Docker not running (optional)")
         checks_passed += 1
@@ -1538,7 +1538,7 @@ def cmd_migrate(args):
             pass
 
     if stored_version == current_version:
-        print(f"  {C.GREEN}✓{C.RESET} Already on version {current_version}. No migration needed.\n")
+        print(f"  {C.GREEN}+{C.RESET} Already on version {current_version}. No migration needed.\n")
         return
 
     if stored_version:
@@ -1568,14 +1568,14 @@ def cmd_migrate(args):
             if changed:
                 with open(tuning_path, "w") as f:
                     json.dump(tc, f, indent=2)
-                print(f"  {C.GREEN}✓{C.RESET} Migrated tuning_config.json (added missing sections)")
+                print(f"  {C.GREEN}+{C.RESET} Migrated tuning_config.json (added missing sections)")
                 migrated += 1
             else:
-                print(f"  {C.GREEN}✓{C.RESET} tuning_config.json: schema up to date")
+                print(f"  {C.GREEN}+{C.RESET} tuning_config.json: schema up to date")
         except Exception as e:
-            print(f"  {C.RED}✗{C.RESET} tuning_config.json error: {e}")
+            print(f"  {C.RED}x{C.RESET} tuning_config.json error: {e}")
     else:
-        print(f"  {C.GREEN}✓{C.RESET} No tuning_config.json (using defaults)")
+        print(f"  {C.GREEN}+{C.RESET} No tuning_config.json (using defaults)")
 
     # Check checkpoint format
     checkpoint_dir = entroly_dir / "checkpoints"
@@ -1586,9 +1586,9 @@ def cmd_migrate(args):
             print(f"  {C.YELLOW}!{C.RESET} Found {len(old_checkpoints)} uncompressed checkpoints")
             print(f"       Run {C.CYAN}entroly clean{C.RESET} + re-index for compressed format")
         else:
-            print(f"  {C.GREEN}✓{C.RESET} Checkpoints: format OK ({len(gz_checkpoints)} compressed)")
+            print(f"  {C.GREEN}+{C.RESET} Checkpoints: format OK ({len(gz_checkpoints)} compressed)")
     else:
-        print(f"  {C.GREEN}✓{C.RESET} No checkpoints to migrate")
+        print(f"  {C.GREEN}+{C.RESET} No checkpoints to migrate")
 
     # Write version marker
     try:
@@ -1688,7 +1688,7 @@ def cmd_completions(args):
     cmd_list = " ".join(commands)
 
     if shell == "bash":
-        print(f"""# entroly bash completion — add to ~/.bashrc:
+        print(f"""# entroly bash completion -- add to ~/.bashrc:
 #   eval "$(entroly completions bash)"
 _entroly_completions() {{
     local cur="${{COMP_WORDS[COMP_CWORD]}}"
@@ -1704,7 +1704,7 @@ _entroly_completions() {{
 }}
 complete -F _entroly_completions entroly""")
     elif shell == "zsh":
-        print(f"""# entroly zsh completion — add to ~/.zshrc:
+        print(f"""# entroly zsh completion -- add to ~/.zshrc:
 #   eval "$(entroly completions zsh)"
 _entroly() {{
     local -a commands
@@ -1718,7 +1718,7 @@ _entroly() {{
 }}
 compdef _entroly entroly""")
     elif shell == "fish":
-        print(f"""# entroly fish completion — save to ~/.config/fish/completions/entroly.fish
+        print(f"""# entroly fish completion -- save to ~/.config/fish/completions/entroly.fish
 complete -c entroly -n '__fish_use_subcommand' -a '{cmd_list}' -d 'Entroly commands'
 complete -c entroly -n '__fish_seen_subcommand_from proxy' -l port -d 'Proxy port'
 complete -c entroly -n '__fish_seen_subcommand_from proxy' -l host -d 'Bind host'

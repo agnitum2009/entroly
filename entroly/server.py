@@ -463,7 +463,7 @@ class EntrolyEngine:
                     else:
                         logger.info("No persistent index found, starting fresh session")
                 else:
-                    logger.debug("Rust engine does not support load_index — skipping persistent index")
+                    logger.debug("Rust engine does not support load_index -- skipping persistent index")
             except Exception as e:
                 logger.warning(f"Failed to load persistent index: {e}")
 
@@ -2339,7 +2339,7 @@ def _start_autotune_daemon(engine: "EntrolyEngine") -> None:
                 with _weight_lock:
                     engine._rust.set_weights(w_r, w_f, w_s, w_e)
                 logger.info(
-                    f"Autotune: hot-reloaded weights → "
+                    f"Autotune: hot-reloaded weights -> "
                     f"R={w_r:.2f} F={w_f:.2f} S={w_s:.2f} E={w_e:.2f}"
                 )
             return True
@@ -2399,7 +2399,7 @@ def main():
     import signal
 
     def _shutdown_handler(*_args):
-        logger.info("Shutdown signal received — persisting state...")
+        logger.info("Shutdown signal received -- persisting state...")
         try:
             engine.checkpoint()
             logger.info("State persisted successfully")

@@ -35,6 +35,7 @@ mod cognitive_bus;
 mod cache;
 mod resonance;
 mod causal;
+pub mod cogops;
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -3424,6 +3425,8 @@ fn entroly_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // ── Multi-Agent (additive — new classes, no existing API changes)
     m.add_class::<nkbe::NkbeAllocator>()?;
     m.add_class::<cognitive_bus::CognitiveBus>()?;
+    // ── CogOps Epistemic Engine
+    m.add_class::<cogops::CogOpsEngine>()?;
     Ok(())
 }
 

@@ -59,7 +59,7 @@ try:
         create_memory as _create_memory,
     )
     _HIPPOCAMPUS_AVAILABLE = True
-    logger.info("Long-term memory: hippocampus-sharp-memory detected ✓")
+    logger.info("Long-term memory: hippocampus-sharp-memory detected +")
 except ImportError:
     logger.debug(
         "hippocampus-sharp-memory not installed — long-term memory disabled. "
