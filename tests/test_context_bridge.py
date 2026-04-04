@@ -288,7 +288,7 @@ class TestAutoTune:
 
     def test_drift_penalty_prevents_runaway(self):
         at = AutoTune(drift_penalty=0.5)  # Strong drift penalty
-        initial_w = at._weights["entropy"]
+        at._weights["entropy"]
         # Very extreme outcomes
         for _ in range(100):
             at.update(1.0, {"entropy": 1.0, "relevance": 0.0, "recency": 0.0, "diversity": 0.0})

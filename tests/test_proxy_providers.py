@@ -33,7 +33,7 @@ import pytest
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO))
 
-from entroly.proxy_transform import (
+from entroly.proxy_transform import (  # noqa: E402
     apply_temperature,
     detect_provider,
     extract_model,
@@ -42,7 +42,7 @@ from entroly.proxy_transform import (
     inject_context_openai,
     inject_context_anthropic,
 )
-from entroly.proxy_config import ProxyConfig, context_window_for_model
+from entroly.proxy_config import ProxyConfig, context_window_for_model  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════════════════

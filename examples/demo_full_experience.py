@@ -11,7 +11,12 @@ This is NOT a simulation. Every metric shown is computed by the real
 Rust-powered Entroly engine (entroly_core) running live.
 """
 
-import json, time, sys, os, threading, textwrap
+import json
+import time
+import sys
+import os
+import threading
+import textwrap
 from pathlib import Path
 
 # ── ANSI styling ─────────────────────────────────────────────────────────────
@@ -298,7 +303,7 @@ TOKEN_BUDGET = 250  # Realistic tight budget
 
 def act1_the_pain():
     print(f"\n{S.BG_DK}{S.WH}")
-    print(f"  ╔══════════════════════════════════════════════════════════════════════╗")
+    print("  ╔══════════════════════════════════════════════════════════════════════╗")
     print(f"  ║{S.R}{S.BG_DK}                                                                      {S.WH}║")
     print(f"  ║{S.R}{S.BG_DK}  {S.CY}{S.B}  E N T R O L Y  —  Developer Experience Demo            {S.WH}{S.BG_DK}   {S.WH}║")
     print(f"  ║{S.R}{S.BG_DK}  {S.GY}  Real Rust engine • Real metrics • No fakes                 {S.WH}{S.BG_DK} {S.WH}║")
@@ -307,7 +312,7 @@ def act1_the_pain():
     _pause(0.6)
 
     _hdr("ACT 1: THE DEVELOPER'S DAILY PAIN", "😤")
-    
+
     print(f"""
   {S.WH}{S.B}Scene:{S.R} {S.WH}You open Cursor/VSCode. You ask your AI agent:{S.R}
   {S.YL}{S.B}  "Fix the SQL injection vulnerability in cursor.execute"{S.R}
@@ -340,11 +345,11 @@ def act1_the_pain():
             naive_selected.append((src, f))
         else:
             naive_dropped.append((src, f))
-    
+
     naive_relevant = sum(1 for s, f in naive_selected if f["relevant"])
     naive_noise = sum(1 for s, f in naive_selected if not f["relevant"])
     total_relevant = sum(1 for f in CODEBASE.values() if f["relevant"])
-    
+
     for src, f in naive_selected:
         tag = f"{S.GR}✓ RELEVANT" if f["relevant"] else f"{S.RD}✗ NOISE   "
         print(f"    {tag}{S.R}  {S.GY}{src:<28}{S.R} {S.D}{f['tokens']:>3} tok{S.R}")
@@ -354,7 +359,7 @@ def act1_the_pain():
 
     naive_recall = naive_relevant / total_relevant
     naive_precision = naive_relevant / max(len(naive_selected), 1)
-    
+
     print()
     print(f"""
   {S.RD}{S.B}Problem 2: PARTIAL FAILURES{S.R}
@@ -391,7 +396,7 @@ def act1_the_pain():
 
 def act2_installation():
     _hdr("ACT 2: INSTALLING ENTROLY", "📦")
-    
+
     print(f"""
   {S.WH}Two ways to install:{S.R}
 
@@ -405,7 +410,7 @@ def act2_installation():
   {S.GY}  $ {S.WH}cd entroly-core && maturin develop --release{S.R}
 """)
     _pause(0.3)
-    
+
     # Verify real engine is available
     try:
         from entroly_core import EntrolyEngine
@@ -422,9 +427,9 @@ def act2_installation():
 
 def act3_real_engine():
     from entroly_core import EntrolyEngine
-    
+
     _hdr("ACT 3: ENTROLY OPTIMIZES YOUR CONTEXT", "⚡")
-    
+
     # Create a real engine with real config
     engine = EntrolyEngine(
         w_recency=0.30, w_frequency=0.25, w_semantic=0.25, w_entropy=0.20,
@@ -433,19 +438,19 @@ def act3_real_engine():
 
     # ── Step 1: Ingest the codebase (real) ──
     _sub("Step 1: Ingesting your codebase (real Rust engine)")
-    
+
     ingest_times = []
     ingest_results = {}
     dupes_caught = 0
     tokens_saved_dedup = 0
-    
+
     for src, f in CODEBASE.items():
         t0 = time.perf_counter()
         result = dict(engine.ingest(f["content"], src, f["tokens"], False))
         elapsed_us = (time.perf_counter() - t0) * 1_000_000
         ingest_times.append(elapsed_us)
         ingest_results[src] = result
-        
+
         status = result.get("status", "?")
         if status == "duplicate":
             dupes_caught += 1
@@ -456,9 +461,9 @@ def act3_real_engine():
             entropy = result.get("entropy_score", 0)
             icon = f"{S.GR}✓ INGEST"
             detail = f"entropy={entropy:.4f}  tokens={f['tokens']}"
-        
+
         print(f"    {icon}{S.R}  {S.GY}{src:<28}{S.R}  {S.D}{detail}{S.R}  {S.D}({elapsed_us:.0f}µs){S.R}")
-    
+
     avg_ingest = sum(ingest_times) / len(ingest_times)
     print(f"\n    {S.CY}Avg ingest: {avg_ingest:.0f}µs per fragment | Duplicates caught: {dupes_caught} | Tokens saved: {tokens_saved_dedup}{S.R}")
     _pause(0.3)
@@ -466,41 +471,41 @@ def act3_real_engine():
     # ── Step 2: Optimize (real knapsack DP) ──
     _sub(f"Step 2: Optimizing context for query (budget={TOKEN_BUDGET} tokens)")
     print(f"    {S.GY}Query: {S.YL}\"{QUERY}\"{S.R}")
-    
+
     t0 = time.perf_counter()
     opt = dict(engine.optimize(TOKEN_BUDGET, QUERY))
     opt_ms = (time.perf_counter() - t0) * 1000
-    
+
     selected = [dict(s) for s in opt.get("selected", [])]
     selected_sources = {s.get("source", "") for s in selected}
     total_tokens_used = opt.get("total_tokens", 0)
     skel_count = opt.get("skeleton_count", 0)
     skel_tokens = opt.get("skeleton_tokens", 0)
-    
+
     print(f"\n    {S.CY}Optimization completed in {S.B}{opt_ms:.2f} ms{S.R}{S.CY} (knapsack DP){S.R}\n")
-    
+
     # Show what Entroly selected
     entroly_relevant = 0
     entroly_noise = 0
-    
+
     for s in selected:
         src = s.get("source", "")
         is_rel = CODEBASE.get(src, {}).get("relevant", False)
         entropy = s.get("entropy_score", 0)
         tokens = s.get("token_count", 0)
         relevance = s.get("relevance_score", 0)
-        
+
         if is_rel:
             entroly_relevant += 1
             tag = f"{S.GR}✓ RELEVANT"
         else:
             entroly_noise += 1
             tag = f"{S.OR}◇ CONTEXT "
-        
+
         ebar = _bar(entropy, 1.0, 12, S.CY)
         rbar = _bar(relevance, 1.0, 12, S.MG)
         print(f"    {tag}{S.R}  {S.WH}{src:<28}{S.R}  {S.D}{tokens:>3} tok{S.R}  entropy {ebar}  relevance {rbar}")
-    
+
     if skel_count > 0:
         print(f"\n    {S.CY}+ {skel_count} skeleton summaries injected ({skel_tokens} tokens) — structural context without full code{S.R}")
 
@@ -529,7 +534,7 @@ def act3_real_engine():
     _m("Tokens used", f"{total_tokens_used}/{TOKEN_BUDGET}", S.GR)
     _m("Optimize latency", f"{opt_ms:.2f} ms", S.GR)
     _m("Duplicates eliminated", f"{dupes_caught} ({tokens_saved_dedup} tokens saved)", S.CY)
-    
+
     _pause(0.3)
     return engine, entroly_recall, entroly_precision, entroly_f1, opt_ms, dupes_caught, tokens_saved_dedup, total_tokens_used
 
@@ -540,12 +545,12 @@ def act3_real_engine():
 
 def act4_dashboard(engine):
     _hdr("ACT 4: ENTROLY DASHBOARD (Live Stats)", "📊")
-    
+
     stats = dict(engine.stats())
     session = dict(stats.get("session", {}))
     dedup = dict(stats.get("dedup", {}))
     eff_block = dict(stats.get("context_efficiency", {}))
-    
+
     print(f"""
   {S.BG_DK}{S.WH}
   ┌─────────────────────────── ENTROLY DASHBOARD ───────────────────────────┐
@@ -577,7 +582,7 @@ def act4_dashboard(engine):
 
 def act5_autotuner():
     _hdr("ACT 5: AUTOTUNER — Self-Improving in Background", "🔬")
-    
+
     print(f"""
   {S.WH}The autotuner runs as a background daemon thread (nice+10).{S.R}
   {S.GY}It NEVER interrupts your coding. It only tunes when your CPU is idle.{S.R}
@@ -588,48 +593,49 @@ def act5_autotuner():
 
     # Run real autotune iterations
     _sub("Running 5 real autotune iterations (bench.evaluate → mutate → evaluate)")
-    
+
     try:
         from bench.benchmark_harness import load_tuning_config
         from bench.evaluate import evaluate as bench_evaluate
-        
+
         config = load_tuning_config()
         baseline = bench_evaluate(config, quiet=True)
         baseline_score = baseline["composite_score"]
-        
+
         print(f"    {S.CY}Baseline composite_score = {baseline_score:.4f}{S.R}")
         print(f"    {S.GY}  recall={baseline['avg_recall']:.4f}  precision={baseline['avg_precision']:.4f}  "
               f"efficiency={baseline['avg_context_efficiency']:.4f}  latency={baseline['avg_latency_ms']:.1f}ms{S.R}\n")
-        
+
         # Run real autotune
         import importlib
         at = importlib.import_module("bench.autotune")
-        
+
         # Quick 3-iteration autotune
         print(f"    {S.OR}Running 3 autotune iterations...{S.R}\n")
-        
-        import io, contextlib
+
+        import io
+        import contextlib
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             at.autotune(max_iterations=3, strategy_name="balanced", commit_git=False)
-        
+
         # Show the output
         for line in buf.getvalue().strip().split('\n'):
             if line.strip():
                 print(f"    {S.GY}{line}{S.R}")
-        
+
         # Re-evaluate
         final = bench_evaluate(config, quiet=True)
         final_score = final["composite_score"]
-        
+
         delta = final_score - baseline_score
         print(f"\n    {S.CY}Final composite_score = {final_score:.4f}  (Δ={delta:+.4f}){S.R}")
-        
+
         if final['all_latency_ok']:
             print(f"    {S.GR}✓ All 50 benchmark cases under 500ms hard budget{S.R}")
-        
+
         return baseline_score, final_score
-        
+
     except Exception as e:
         print(f"    {S.YL}⊘ Autotune demo skipped: {e}{S.R}")
         return 0.6451, 0.6451
@@ -643,16 +649,16 @@ def act6_business_value(naive_recall, naive_precision, naive_noise, naive_tokens
                          entroly_recall, entroly_precision, entroly_f1, opt_ms,
                          dupes, tokens_saved, tokens_used, baseline_score, final_score):
     _hdr("ACT 6: BUSINESS VALUE — Why This Matters", "💰")
-    
+
     total_tokens = sum(f["tokens"] for f in CODEBASE.values())
-    
+
     # Calculate real savings
     token_waste_pct_before = (total_tokens - sum(f["tokens"] for f in CODEBASE.values() if f["relevant"])) / total_tokens * 100
     token_waste_pct_after = ((tokens_used - sum(f["tokens"] for f in CODEBASE.values() if f["relevant"])) / max(tokens_used, 1)) * 100
-    
+
     recall_improvement = entroly_recall - naive_recall
     precision_improvement = entroly_precision - naive_precision
-    
+
     # Cost model: GPT-4o ~$2.50/1M input tokens, avg developer makes 50 requests/day
     cost_per_1k = 0.0025  # $2.50/1M = $0.0025/1K
     daily_requests = 50
@@ -660,13 +666,13 @@ def act6_business_value(naive_recall, naive_precision, naive_noise, naive_tokens
     daily_savings = daily_requests * tokens_saved_per_request * cost_per_1k / 1000
     monthly_savings_solo = daily_savings * 22  # working days
     monthly_savings_team = monthly_savings_solo * 5  # 5 devs
-    
+
     # Re-prompt reduction: better recall means fewer re-prompts
     reprompts_before = 3.2  # avg re-prompts per task
     reprompts_after = 1.1   # with entroly
     time_saved_per_task_min = (reprompts_before - reprompts_after) * 2  # 2 min per re-prompt cycle
     daily_time_saved = time_saved_per_task_min * 8  # 8 tasks/day
-    
+
     print(f"""
   {S.BG_DK}{S.WH}
   ╔══════════════════════════════════════════════════════════════════════════╗
@@ -723,11 +729,11 @@ def act6_business_value(naive_recall, naive_precision, naive_noise, naive_tokens
         ("🛡️", "SAST Security Scan",          "Auto-flags hardcoded secrets, SQL injection, unsafe patterns"),
         ("💀", "Skeleton Substitution",       "Fits structural summaries of excluded files into remaining budget"),
     ]
-    
+
     for icon, name, desc in internals:
         print(f"    {icon}  {S.B}{S.WH}{name}{S.R}")
         print(f"        {S.GY}{desc}{S.R}")
-    
+
     _pause(0.3)
 
     # Final
@@ -755,20 +761,20 @@ def act6_business_value(naive_recall, naive_precision, naive_noise, naive_tokens
 def main():
     # Act 1: Show the pain
     naive_recall, naive_precision, naive_noise, naive_tokens = act1_the_pain()
-    
+
     # Act 2: Installation
     if not act2_installation():
         sys.exit(1)
-    
+
     # Act 3: Real engine
     engine, e_recall, e_precision, e_f1, opt_ms, dupes, tokens_saved, tokens_used = act3_real_engine()
-    
+
     # Act 4: Dashboard
     act4_dashboard(engine)
-    
+
     # Act 5: Autotuner
     baseline, final = act5_autotuner()
-    
+
     # Act 6: Business value
     act6_business_value(
         naive_recall, naive_precision, naive_noise, naive_tokens,

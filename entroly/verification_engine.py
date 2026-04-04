@@ -386,7 +386,7 @@ class VerificationEngine:
                             belief_b=b.get("claim_id", ""),
                             entity=entity,
                             conflict_type="stale_vs_fresh",
-                            description=f"Same entity has both verified and stale beliefs",
+                            description="Same entity has both verified and stale beliefs",
                             severity="medium",
                         ))
 

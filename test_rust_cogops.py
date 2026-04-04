@@ -1,5 +1,6 @@
 """Full CogOps Rust engine integration test."""
-import tempfile, json
+import tempfile
+import json
 from entroly_core import CogOpsEngine
 
 PASS = FAIL = 0

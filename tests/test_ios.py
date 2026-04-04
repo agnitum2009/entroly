@@ -156,7 +156,7 @@ class TestSDSBudgetRespect:
         engine = make_engine()
         ingest_fragment(engine, "def foo(): pass", "foo.py", 100)
         engine.advance_turn()
-        result = engine.optimize(0, "foo")
+        engine.optimize(0, "foo")
         # May have pinned fragments, but total should be 0 or minimal
 
 
@@ -241,7 +241,7 @@ class TestMRKResolutionSelection:
         result = engine.optimize(500, "handler")
         selected = result["selected"]
 
-        variants = [f.get("variant", "full") for f in selected]
+        [f.get("variant", "full") for f in selected]
         # Should have a mix of resolutions
         unique_frags = set(f["source"] for f in selected)
         assert len(unique_frags) >= 2, \
@@ -260,7 +260,7 @@ class TestMRKResolutionSelection:
 
         variants = [f.get("variant", "full") for f in selected]
         # Should have at least some non-full variants
-        has_non_full = any(v != "full" for v in variants)
+        any(v != "full" for v in variants)
         # This depends on whether skeletons were extracted — may or may not have skeleton/reference
 
     def test_mrk_disabled_uses_full_only(self):
@@ -676,7 +676,7 @@ class TestEdgeCases:
         engine = make_engine()
         ingest_fragment(engine, "def big(): " + "x = 1; " * 100, "big.py", 500)
         engine.advance_turn()
-        result = engine.optimize(10, "big")
+        engine.optimize(10, "big")
         # May select reference resolution or nothing — shouldn't crash
 
     def test_empty_query(self):

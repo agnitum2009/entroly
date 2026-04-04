@@ -839,7 +839,7 @@ def run():
     else:
         print(f"  Results: {passed}/{passed+failed} passed  ({failed} FAILED)"
               + (f"  ({skipped} skipped)" if skipped else ""))
-        print(f"  Failures:")
+        print("  Failures:")
         for f in _failures:
             print(f"    X {f}")
     print(f"{'==' * 35}")

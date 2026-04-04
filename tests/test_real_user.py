@@ -179,7 +179,7 @@ def run():
 
         opt_a = engine.optimize_context(token_budget=64_000, query=QUERY)
         sa = top_scores(opt_a)
-        k_score_after = sa.get(knapsack_id)
+        sa.get(knapsack_id)
         s_score_after = sa.get(server_id)
 
         # INV-2: the correct Wilson invariant is asymmetric:
@@ -224,7 +224,7 @@ def run():
         pinned_ids = {fid for label, fid in ids.items()
                       if any(k in label for k in ("knapsack", "lib.rs"))
                       and fid}
-        k_pinned = len(pinned_ids)
+        len(pinned_ids)
 
         # INV-3 REVISED: The Rust engine (lib.rs:244-247) force-pins Critical/Safety files,
         # overriding is_pinned=False from the caller. ALL .py and .rs source files are

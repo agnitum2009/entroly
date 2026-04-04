@@ -48,11 +48,14 @@ from entroly.server import EntrolyEngine
 def test_knapsack_selects_optimal_subset():
     """Verify that the DP solver picks the highest-value subset."""
     a = ContextFragment("a", "high value small", token_count=100)
-    a.recency_score = 1.0; a.entropy_score = 0.9
+    a.recency_score = 1.0
+    a.entropy_score = 0.9
     b = ContextFragment("b", "low value large", token_count=900)
-    b.recency_score = 0.1; b.entropy_score = 0.1
+    b.recency_score = 0.1
+    b.entropy_score = 0.1
     c = ContextFragment("c", "medium value medium", token_count=400)
-    c.recency_score = 0.7; c.entropy_score = 0.6
+    c.recency_score = 0.7
+    c.entropy_score = 0.6
     fragments = [a, b, c]
 
     selected, stats = knapsack_optimize(fragments, token_budget=500)
@@ -61,7 +64,7 @@ def test_knapsack_selects_optimal_subset():
     # NOT "b" (900 tokens, wouldn't fit with either, and low relevance)
     selected_ids = {f.fragment_id for f in selected}
     assert "a" in selected_ids, f"Expected 'a' in selection, got {selected_ids}"
-    assert "b" not in selected_ids, f"'b' should not be selected (too large + low value)"
+    assert "b" not in selected_ids, "'b' should not be selected (too large + low value)"
     assert stats["total_tokens"] <= 500, f"Budget exceeded: {stats['total_tokens']}"
     print("  ✓ Knapsack selects optimal subset correctly")
 
@@ -229,9 +232,11 @@ def test_checkpoint_save_and_load():
         mgr = CheckpointManager(tmpdir, auto_interval=100)
 
         f1 = ContextFragment("f1", "hello world", token_count=5)
-        f1.recency_score = 0.8; f1.entropy_score = 0.6
+        f1.recency_score = 0.8
+        f1.entropy_score = 0.6
         f2 = ContextFragment("f2", "goodbye world", token_count=5)
-        f2.recency_score = 0.3; f2.entropy_score = 0.9
+        f2.recency_score = 0.3
+        f2.entropy_score = 0.9
         frags = [f1, f2]
 
         mgr.save(frags, {"f1": 12345}, {}, current_turn=10,
@@ -392,7 +397,7 @@ def test_recall_correct_after_eviction():
     """
     After advance_turn() applies Ebbinghaus decay and rebuilds the LSH index,
     pinned live fragments must still be found correctly.
-    
+
     This tests that rebuild_lsh_index() correctly re-slots remaining fragments
     after non-pinned ones are evicted — a slot-index corruption would silently
     cause the engine to miss relevant fragments.

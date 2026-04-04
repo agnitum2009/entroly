@@ -290,7 +290,7 @@ class ChangePipeline:
         changeset = parse_diff(diff_text, commit_message)
 
         # 2. Compute belief diff
-        all_changed = changeset.files_added + changeset.files_modified
+        changeset.files_added + changeset.files_modified
         belief_diff = self._compute_belief_diff(changeset)
 
         # 3. Review

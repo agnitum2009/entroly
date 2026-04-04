@@ -140,11 +140,12 @@ def test_token_count_accuracy():
 def test_feedback_idempotency():
     section("F-20", "FEEDBACK IDEMPOTENCY — double-calling record_success gives same direction")
     engine, _ = fresh_engine()
-    ids = load_all(engine, real_sources())
+    load_all(engine, real_sources())
     opt = engine.optimize_context(token_budget=500_000, query="optimization")
     sel = opt.get("selected", [])
     if not sel:
-        skip("feedback idempotency", "nothing selected"); return
+        skip("feedback idempotency", "nothing selected")
+        return
 
     fid = sel[0]["id"]
     score_base = sel[0].get("relevance", 0.0)
@@ -175,7 +176,8 @@ def test_relevance_ordering():
     opt = engine.optimize_context(token_budget=500_000, query="knapsack entropy scoring decay")
     selected = opt.get("selected", [])
     if len(selected) < 2:
-        skip("relevance ordering", "< 2 fragments"); return
+        skip("relevance ordering", "< 2 fragments")
+        return
 
     # The Rust engine orders by compute_ordering_priority (criticality + deps + relevance),
     # NOT by raw relevance alone. The contract is: the list is stable/deterministic,
@@ -214,7 +216,8 @@ def test_checkpoint_file_format():
             data = json.load(f)
         check("checkpoint is valid JSON", True)
     except Exception as e:
-        check("checkpoint is valid JSON", False, str(e)); return
+        check("checkpoint is valid JSON", False, str(e))
+        return
 
     for key in ("checkpoint_id", "timestamp", "current_turn", "fragments"):
         check(f"checkpoint has key '{key}'", key in data, f"keys={list(data.keys())}")
@@ -253,7 +256,7 @@ def test_resume_full_state():
     section("F-23", "RESUME FULL STATE — feedback still works after resume")
     engine, tmp = fresh_engine()
     sources = real_sources()
-    ids = load_all(engine, sources)
+    load_all(engine, sources)
 
     # Give some feedback before checkpoint
     opt = engine.optimize_context(token_budget=500_000, query="optimization")
@@ -349,7 +352,7 @@ def test_sufficiency_contract():
         "",          # edge: empty
         "xyzzy nonexistent garbage 1234",  # edge: no match
     ]:
-        opt = engine.optimize_context(token_budget=100_000, query=query)
+        engine.optimize_context(token_budget=100_000, query=query)
         exp = engine.explain_selection()
         suf = exp.get("sufficiency", None)
         if suf is not None:
@@ -404,7 +407,8 @@ def test_entropy_signal():
     high_entropy_path = next(
         (p for _, p in real_sources() if "knapsack" in str(p)), None)
     if not high_entropy_path:
-        skip("entropy signal", "knapsack file not found"); return
+        skip("entropy signal", "knapsack file not found")
+        return
 
     high_entropy_content = high_entropy_path.read_text(encoding="utf-8", errors="replace")
 
@@ -436,7 +440,7 @@ def test_advance_turn_decay():
     fid = r.get("fragment_id", "")
 
     def recency_score():
-        stats = engine.get_stats()
+        engine.get_stats()
         # Try to find the fragment's recency in stats — or proxy via recall score
         recall = engine.recall_relevant("anything generic", top_k=50)
         for item in recall:
@@ -512,7 +516,8 @@ def test_record_success_monotone():
     opt = engine.optimize_context(token_budget=500_000, query="knapsack")
     sel = opt.get("selected", [])
     if not sel:
-        skip("monotone", "nothing selected"); return
+        skip("monotone", "nothing selected")
+        return
 
     fid = sel[0]["id"]
     scores = []

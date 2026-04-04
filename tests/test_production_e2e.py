@@ -197,7 +197,8 @@ ok("gc.freeze does not raise on non-empty heap", True)  # structural
 section("P-05  AUTOTUNE CONFIG I/O")
 try:
     from bench.autotune import mutate_random, normalize_weights, TUNABLE_PARAMS
-    import random, copy
+    import random
+    import copy
 
     cfg_path = REPO / "tuning_config.json"
     cfg_orig = json.loads(cfg_path.read_text())
@@ -254,7 +255,7 @@ try:
         cfg["autotuner"]["enabled"] = True
         cfg["autotuner"]["idle_only"] = False
         cfg_path.write_text(json.dumps(cfg, indent=2))
-        
+
         # enabled=true → daemon spawns
         threads_before = sum(1 for t in threading.enumerate() if t.name == "entroly-autotune")
         _start_autotune_daemon(None)
@@ -265,7 +266,7 @@ try:
         # enabled=false → no spawn
         cfg["autotuner"]["enabled"] = False
         cfg_path.write_text(json.dumps(cfg, indent=2))
-        
+
         threads_before2 = sum(1 for t in threading.enumerate() if t.name == "entroly-autotune")
         _start_autotune_daemon(None)
         time.sleep(0.1)
@@ -401,8 +402,10 @@ def worker(thread_id: int):
                 errors.append(str(exc))
 
 threads = [threading.Thread(target=worker, args=(t,)) for t in range(5)]
-for t in threads: t.start()
-for t in threads: t.join()
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
 
 ok("no exceptions during concurrent ingests", len(errors) == 0, f"{len(errors)} errors: {errors[:2]}")
 total_accepted = sum(1 for s in ingest_results if s == "ingested")
@@ -499,11 +502,11 @@ section("P-17  EXPORT / IMPORT ROUNDTRIP (via server.py layer)")
 try:
     from entroly.server import EntrolyEngine as SrvEng
     from entroly.config import EntrolyConfig
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         cfg = EntrolyConfig()
         cfg.checkpoint_dir = Path(tmpdir)
-        
+
         srv_exp = SrvEng(config=cfg)
         for name, (content, src, tokens) in CODE.items():
             srv_exp.ingest_fragment(content, src)
@@ -545,7 +548,7 @@ if __name__ == "__main__":
         print(f"{GREEN}ALL PASS ✓{RESET}")
     else:
         print(f"{RED}{_failed} FAILED ✗{RESET}")
-        print(f"\nFailed tests:")
+        print("\nFailed tests:")
         for f in _failures:
             print(f"  • {f}")
 

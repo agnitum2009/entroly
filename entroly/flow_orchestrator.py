@@ -390,7 +390,7 @@ class FlowOrchestrator:
 
         # Step 4: Still try to compile and answer
         result.steps_completed.append("compile_fallback")
-        compilation = self._compiler.compile_directory(self._source_dir)
+        self._compiler.compile_directory(self._source_dir)
         beliefs = self._find_relevant_beliefs(query)
         if beliefs:
             result.answer += (

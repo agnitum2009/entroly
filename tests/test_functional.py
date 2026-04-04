@@ -275,7 +275,7 @@ def test_feedback_loop():
     section("F-05  FEEDBACK LOOP  —  extended success/failure amplification")
     engine, _ = fresh_engine()
     sources = real_sources()
-    ids = ingest_corpus(engine, sources)
+    ingest_corpus(engine, sources)
 
     # Find two fragments that appear in the optimize output
     opt0 = engine.optimize_context(token_budget=500_000, query="optimization scoring")
@@ -331,7 +331,7 @@ def test_multi_turn_lifecycle():
     section("F-06  MULTI-TURN LIFECYCLE  —  real session: ingest → optimize × 10 turns")
     engine, _ = fresh_engine()
     sources = real_sources()
-    ids = ingest_corpus(engine, sources)
+    ingest_corpus(engine, sources)
 
     queries = [
         "knapsack token budget optimization dynamic programming",
@@ -608,7 +608,7 @@ def test_tiny_budget():
         check(f"budget={budget}: optimize doesn't crash",
               isinstance(opt, dict), f"got={type(opt)}")
         used = opt_total_tokens(opt)
-        eff  = opt_effective_budget(opt, budget if budget > 0 else 1)
+        opt_effective_budget(opt, budget if budget > 0 else 1)
         # With very tiny budget: either 0 selected OR only pinned items (which bypass budget)
         # We just verify the return is a valid result
         check(f"budget={budget}: total_tokens is non-negative int",
@@ -660,7 +660,7 @@ def test_mixed_feedback():
         return
 
     target_id = selected[0]["id"]
-    score_baseline = selected[0].get("relevance", 0.0)
+    selected[0].get("relevance", 0.0)
 
     # 3 successes then 5 failures — net effect should be below 3-success-only
     engine.record_success([target_id])
@@ -807,7 +807,7 @@ def run():
             import traceback
             traceback.print_exc(file=sys.stderr)
 
-    total = passed + failed + skipped
+    passed + failed + skipped
     print(f"\n{'══' * 31}")
     if failed == 0:
         print(f"  Results: {passed}/{passed+failed} passed  — ALL CHECKS PASS ✓"

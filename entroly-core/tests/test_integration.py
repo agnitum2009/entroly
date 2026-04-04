@@ -744,7 +744,7 @@ def test_no_skeleton_for_non_code():
     e = sc.EntrolyEngine()
     r = e.ingest("This is a plain text document with no code structure at all.\n" * 10, "readme.md", 0, False)
     assert r.get("has_skeleton", False) == False, \
-        f"Non-code file should NOT have skeleton"
+        "Non-code file should NOT have skeleton"
 test("No skeleton for non-code files (markdown)", test_no_skeleton_for_non_code)
 
 def test_skeleton_present_for_js():

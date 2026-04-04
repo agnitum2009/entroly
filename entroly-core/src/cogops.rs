@@ -10,6 +10,8 @@
 //!   5. SkillEngine:         Skill synthesis, benchmarking, promotion
 //!   6. EpistemicRouter:     Intent classification, routing matrix
 
+#![allow(dead_code, unused_assignments, unused_variables, clippy::manual_strip, clippy::needless_range_loop, clippy::too_many_arguments)]
+
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use serde::{Deserialize, Serialize};
@@ -398,7 +400,7 @@ fn get_next_docstring(lines: &[&str], after: usize) -> String {
 
 fn get_rust_doc(lines: &[&str], before: usize) -> String {
     let mut docs = Vec::new();
-    let start = if before > 10 { before - 10 } else { 0 };
+    let start = before.saturating_sub(10);
     for i in (start..before).rev() {
         let trimmed = lines[i].trim();
         if trimmed.starts_with("///") {
@@ -810,14 +812,12 @@ pub fn parse_diff(diff_text: &str, commit_msg: &str) -> ChangeSet {
         lines_added: 0, lines_removed: 0, intent: String::new(), functions_changed: Vec::new(),
     };
     for line in diff_text.lines() {
-        if line.starts_with("+++ b/") {
-            let f = &line[6..];
+        if let Some(f) = line.strip_prefix("+++ b/") {
             if f != "/dev/null" && !cs.files_modified.contains(&f.to_string()) {
                 cs.files_modified.push(f.to_string());
             }
-        } else if line.starts_with("--- a/") {
-            let f = &line[6..];
-            if diff_text.contains(&format!("+++ /dev/null")) {
+        } else if let Some(f) = line.strip_prefix("--- a/") {
+            if diff_text.contains(&"+++ /dev/null".to_string()) {
                 cs.files_deleted.push(f.to_string());
             }
         } else if line.starts_with('+') && !line.starts_with("+++") {
@@ -1802,7 +1802,7 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
     (y, mo, days + 1)
 }
 
-fn is_leap(y: u64) -> bool { y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) }
+fn is_leap(y: u64) -> bool { y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) }
 
 /// Extract a value from YAML-like frontmatter.
 fn extract_fm_value(content: &str, key: &str) -> Option<String> {

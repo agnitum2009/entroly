@@ -240,7 +240,7 @@ class SkillBenchmark:
 
         for tc in skill.test_cases:
             query = tc.get("input", "")
-            expected = tc.get("expected", "")
+            tc.get("expected", "")
             try:
                 run = self._runner.run_tool(skill.tool_code, query)
                 if run["status"] == "success":

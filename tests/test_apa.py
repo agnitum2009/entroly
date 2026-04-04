@@ -287,8 +287,8 @@ class TestFormatContextBlockAPA:
             task_type="BugTracing", vagueness=0.0,
         )
         lines = result.split("\n")
-        preamble_idx = next(i for i, l in enumerate(lines) if "error propagation" in l)
-        code_idx = next(i for i, l in enumerate(lines) if "test.py" in l)
+        preamble_idx = next(i for i, line in enumerate(lines) if "error propagation" in line)
+        code_idx = next(i for i, line in enumerate(lines) if "test.py" in line)
         assert preamble_idx < code_idx
 
 

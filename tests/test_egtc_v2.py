@@ -37,7 +37,7 @@ import pytest
 REPO = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO))
 
-from entroly.proxy_transform import (
+from entroly.proxy_transform import (  # noqa: E402
     apply_temperature,
     apply_trajectory_convergence,
     compute_optimal_temperature,
@@ -49,7 +49,7 @@ from entroly.proxy_transform import (
     inject_context_anthropic,
     inject_context_openai,
 )
-from entroly.proxy_config import ProxyConfig, context_window_for_model
+from entroly.proxy_config import ProxyConfig, context_window_for_model  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -301,7 +301,7 @@ class TestTrajectoryConvergence:
     def test_converges_to_c_min(self):
         """At high turn counts, τ → c_min × τ_base."""
         tau_base = 0.8
-        tau_100 = apply_trajectory_convergence(tau_base, 100)
+        apply_trajectory_convergence(tau_base, 100)
         tau_500 = apply_trajectory_convergence(tau_base, 500)
         expected_steady = tau_base * 0.6  # c_min default
         assert abs(tau_500 - expected_steady) < 0.01, (

@@ -259,7 +259,7 @@ def _get_next_docstring(lines: List[str], after_line: int) -> str:
                     doc_lines.append(lines[j].strip().replace('"""', '').replace("'''", ''))
                     break
                 doc_lines.append(lines[j].strip())
-            return " ".join(l for l in doc_lines if l)[:200]
+            return " ".join(line for line in doc_lines if line)[:200]
     return ""
 
 
@@ -358,7 +358,7 @@ def generate_dependency_diagram(
     title: str = "Dependency Graph",
 ) -> str:
     """Generate a Mermaid dependency diagram from the entity graph."""
-    lines = [f"---", f"title: {title}", f"---", "flowchart LR"]
+    lines = ["---", f"title: {title}", "---", "flowchart LR"]
     # Sanitize node IDs
     seen = set()
     for src, deps in dep_graph.items():
@@ -599,7 +599,7 @@ class BeliefCompiler:
         # Summary
         classes = [e for e in module.entities if e.kind in ("class", "struct", "enum", "trait")]
         funcs = [e for e in module.entities if e.kind == "function"]
-        consts = [e for e in module.entities if e.kind == "const"]
+        [e for e in module.entities if e.kind == "const"]
 
         body_parts.append(f"**Language:** {module.language}")
         body_parts.append(f"**Lines of code:** {module.loc}")

@@ -195,10 +195,10 @@ def generate_svg() -> str:
         bold_class = " b" if bold else ""
         escaped = _escape_xml(text)
 
-        parts.append(f'  <g opacity="0">')
+        parts.append('  <g opacity="0">')
         parts.append(f'    <animate attributeName="opacity" from="0" to="1" begin="{appear_time:.2f}s" dur="0.25s" fill="freeze"/>')
         parts.append(f'    <text x="{PADDING_X}" y="{y}" class="t{bold_class}" fill="{color_hex}">{escaped}</text>')
-        parts.append(f'  </g>')
+        parts.append('  </g>')
 
     # Blinking cursor at the end
     last_y = PADDING_Y + (total_lines * LINE_HEIGHT) + 2
@@ -206,7 +206,7 @@ def generate_svg() -> str:
     parts.append(f'  <rect x="{PADDING_X}" y="{last_y}" width="8" height="16" fill="{COLORS["fg"]}" opacity="0">')
     parts.append(f'    <animate attributeName="opacity" from="0" to="1" begin="{cursor_appear:.2f}s" dur="0.01s" fill="freeze"/>')
     parts.append(f'    <animate attributeName="opacity" values="1;1;0;0" dur="1s" begin="{cursor_appear:.2f}s" repeatCount="indefinite"/>')
-    parts.append(f'  </rect>')
+    parts.append('  </rect>')
 
     parts.append('</svg>')
     return '\n'.join(parts)
@@ -407,8 +407,8 @@ def main():
         html_path.write_text(generate_html(), encoding="utf-8")
         print(f"  \033[38;5;82m\u2713\033[0m HTML saved: {html_path}")
 
-    print(f"\n  \033[38;5;45mTip:\033[0m Open the HTML file in a browser for the interactive version!")
-    print(f"  \033[38;5;45mTip:\033[0m Use the SVG in your README for GitHub rendering.")
+    print("\n  \033[38;5;45mTip:\033[0m Open the HTML file in a browser for the interactive version!")
+    print("  \033[38;5;45mTip:\033[0m Use the SVG in your README for GitHub rendering.")
 
 
 if __name__ == "__main__":

@@ -503,20 +503,20 @@ def main():
             print(f"  {'Optimization time':32s} {'—':>14s} {hcc['elapsed_ms']:>11.2f}ms")
 
             if hcc['full_count'] > 0:
-                print(f"\n  HCC Compression Breakdown:")
+                print("\n  HCC Compression Breakdown:")
                 print(f"    Full (100% info):    {hcc['full_count']:>3} files — {', '.join(hcc['full_files'][:5])}")
                 print(f"    Skeleton (70% info): {hcc['skeleton_count']:>3} files — {', '.join(hcc['skeleton_files'][:5])}")
                 print(f"    Reference (15% info):{hcc['reference_count']:>3} files — {', '.join(hcc['reference_files'][:5])}")
 
             if naive['missed']:
-                print(f"\n  Files INVISIBLE without Entroly:")
+                print("\n  Files INVISIBLE without Entroly:")
                 for f in naive['missed'][:10]:
                     print(f"    x {f}")
                 if len(naive['missed']) > 10:
                     print(f"    ... and {len(naive['missed']) - 10} more")
 
     print(f"\n{'=' * 70}")
-    print(f"  BENCHMARK COMPLETE — all numbers are real, measured, reproducible")
+    print("  BENCHMARK COMPLETE — all numbers are real, measured, reproducible")
     print(f"{'=' * 70}\n")
 
 
