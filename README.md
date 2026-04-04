@@ -41,7 +41,7 @@
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/demo.svg" alt="Entroly Demo — 78% token savings in 8ms" width="800">
 </p>
 
-> **Run it yourself:** `pip install entroly && entroly demo`
+> **Run it yourself:** `pip install entroly && entroly demo` or `npm i entroly`
 >
 > Open the [interactive HTML demo](docs/assets/demo.html) for the full animated experience, or generate your own with `python docs/generate_demo.py`.
 
