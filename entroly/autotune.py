@@ -95,13 +95,27 @@ def load_cases() -> List[Dict[str, Any]]:
 
 
 def load_config() -> Dict[str, Any]:
-    """Load the current tuning config (the file we mutate)."""
+    """Load the current tuning config (the file we mutate).
+
+    Returns default config if the file doesn't exist (pip-install mode).
+    """
+    if not CONFIG_PATH.exists():
+        return {
+            "weight_recency": 0.30,
+            "weight_frequency": 0.25,
+            "weight_semantic_sim": 0.25,
+            "weight_entropy": 0.20,
+        }
     with open(CONFIG_PATH) as f:
         return json.load(f)
 
 
 def save_config(config: Dict[str, Any]) -> None:
-    """Save tuning config (single-file mutation)."""
+    """Save tuning config (single-file mutation).
+
+    Creates parent directories if they don't exist.
+    """
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
 
@@ -118,7 +132,7 @@ def evaluate(config: Dict[str, Any], cases: List[Dict[str, Any]],
         from entroly_core import EntrolyEngine
     except ImportError:
         _log("ERROR: entroly_core not available. Run `maturin develop` first.")
-        sys.exit(1)
+        raise RuntimeError("entroly_core not available for autotune evaluation")
 
     total_information = 0.0
     total_tokens_used = 0

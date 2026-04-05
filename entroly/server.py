@@ -2446,8 +2446,10 @@ def main():
         sse_port = int(os.environ.get("ENTROLY_MCP_PORT", "9379"))
         logger.info(f"MCP server running on SSE transport at port {sse_port}")
         logger.info("Multiple clients can connect simultaneously")
+        # Set port on the FastMCP settings before running
+        mcp.settings.port = sse_port
         try:
-            mcp.run(transport="sse", port=sse_port)
+            mcp.run(transport="sse")
         except TypeError:
             # Older MCP SDK may not support transport kwarg
             logger.warning("SSE transport not supported by this MCP SDK version, falling back to stdio")
