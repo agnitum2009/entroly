@@ -1983,7 +1983,7 @@ def cmd_verify(args):
     report = verifier.full_verification_pass()
     rd = report.to_dict()
 
-    print(f"  {C.GREEN}Beliefs checked:{C.RESET}     {rd.get('total_beliefs', 0)}")
+    print(f"  {C.GREEN}Beliefs checked:{C.RESET}     {rd.get('total_beliefs_checked', 0)}")
     print(f"  {C.GREEN}Stale:{C.RESET}               {rd.get('stale_count', 0)}")
     print(f"  {C.GREEN}Contradictions:{C.RESET}      {rd.get('contradiction_count', 0)}")
     print(f"  {C.GREEN}Low confidence:{C.RESET}      {rd.get('low_confidence_count', 0)}")
@@ -2038,10 +2038,10 @@ def cmd_sync(args):
     result = listener.scan_once(force=force, max_files=max_files)
     rd = result.to_dict()
 
-    print(f"  {C.GREEN}Files scanned:{C.RESET}    {rd.get('files_scanned', 0)}")
-    print(f"  {C.GREEN}Files changed:{C.RESET}    {rd.get('files_changed', 0)}")
-    print(f"  {C.GREEN}Beliefs updated:{C.RESET}  {rd.get('beliefs_updated', 0)}")
-    print(f"  {C.GREEN}Beliefs staled:{C.RESET}   {rd.get('beliefs_staled', 0)}")
+    print(f"  {C.GREEN}Files scanned:{C.RESET}    {rd.get('scanned_files', 0)}")
+    print(f"  {C.GREEN}Files changed:{C.RESET}    {len(rd.get('changed_files', []))}")
+    print(f"  {C.GREEN}Beliefs written:{C.RESET}  {rd.get('beliefs_written', 0)}")
+    print(f"  {C.GREEN}Beliefs staled:{C.RESET}   {len(rd.get('refresh_result', {}).get('updated_entities', []))}")
     print(f"\n  {C.GREEN}Workspace synchronized.{C.RESET}\n")
 
 
