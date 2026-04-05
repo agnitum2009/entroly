@@ -767,7 +767,10 @@ def start_dashboard(engine: Any = None, port: int = 9378, daemon: bool = True):
     global _engine
     _engine = engine
 
-    server = HTTPServer(("127.0.0.1", port), DashboardHandler)
+    class _ReuseAddrHTTPServer(HTTPServer):
+        allow_reuse_address = True
+
+    server = _ReuseAddrHTTPServer(("127.0.0.1", port), DashboardHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=daemon)
     thread.start()
     logger.info(f"Dashboard live at http://localhost:{port}")

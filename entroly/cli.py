@@ -70,6 +70,55 @@ _ENTROLY_DIR = Path.home() / ".entroly"
 _FIRST_RUN_MARKER = _ENTROLY_DIR / ".welcome_shown"
 
 
+def _free_port(port: int) -> bool:
+    """Kill any stale entroly process occupying *port*. Returns True if the port is now free."""
+    import signal
+    import socket
+    import time as _time
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        if s.connect_ex(("127.0.0.1", port)) != 0:
+            return True  # port is free
+
+    killed = False
+    try:
+        result = subprocess.run(
+            ["fuser", f"{port}/tcp"],
+            capture_output=True, text=True, timeout=3,
+        )
+        pids = result.stdout.strip().split()
+        for pid_str in pids:
+            pid_str = pid_str.strip()
+            if pid_str.isdigit():
+                pid = int(pid_str)
+                if pid == os.getpid():
+                    continue
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    killed = True
+                except ProcessLookupError:
+                    pass
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    if killed:
+        _time.sleep(0.3)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return True
+        try:
+            subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=3)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        _time.sleep(0.3)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
 def _check_first_run() -> None:
     """Show a one-time welcome message on first ever invocation.
 
@@ -427,6 +476,12 @@ def cmd_dashboard(args):
     # Run an optimize to populate all engine subsystems
     engine.optimize_context(token_budget=128000, query="project overview")
 
+    # Free dashboard port from any stale process
+    if not _free_port(args.port):
+        print(f"  {C.RED}Port {args.port} is in use and could not be freed.{C.RESET}")
+        print(f"  {C.GRAY}Try: entroly dashboard --port <other-port>{C.RESET}")
+        return
+
     # Start web dashboard
     start_dashboard(engine=engine, port=args.port, daemon=False)
     print(f"\n  {C.GREEN}{C.BOLD}Dashboard live at http://localhost:{args.port}{C.RESET}")
@@ -628,6 +683,13 @@ def cmd_proxy(args):
 
     # Run a warm-up optimize to populate all engine subsystems
     engine.optimize_context(token_budget=128000, query="project overview")
+
+    # Free ports from any stale entroly processes
+    if not _free_port(config.port):
+        print(f"  {C.RED}Port {config.port} is in use and could not be freed.{C.RESET}")
+        print(f"  {C.GRAY}Try: entroly proxy --port <other-port>{C.RESET}")
+        return
+    _free_port(9378)  # dashboard port
 
     # Upstream connectivity check — fast-fail if the LLM API is unreachable
     _check_upstream(config)
@@ -1215,6 +1277,12 @@ def cmd_go(args):
 
     # Warm up engine
     engine.optimize_context(token_budget=128000, query="project overview")
+
+    # Free ports from any stale entroly processes
+    if not _free_port(config.port):
+        print(f"  {C.RED}Port {config.port} is in use and could not be freed.{C.RESET}")
+        return
+    _free_port(9378)  # dashboard port
 
     # Start proxy + dashboard
     app = create_proxy_app(engine, config)
