@@ -38,7 +38,7 @@ mod causal;
 pub mod cogops;
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -690,7 +690,7 @@ impl EntrolyEngine {
                 frag.has_simhash = false; // stubs never participate in LSH or SimHash similarity
                 frag.is_pinned = false;
 
-                let slot = self.fragment_slot_ids.len();
+                let _slot = self.fragment_slot_ids.len();
                 self.fragment_slot_ids.push(frag_id.clone());
                 // Stubs are NOT inserted into LSH — avoid degenerate bucket 0 queries
                 // and prevent path-simhash mixing (would corrupt all distance thresholds).
