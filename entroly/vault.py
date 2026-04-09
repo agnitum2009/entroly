@@ -25,15 +25,13 @@ Every belief artifact carries machine-auditable frontmatter:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +67,11 @@ class BeliefArtifact:
     entity: str = ""
     status: str = "inferred"  # observed | inferred | verified | stale | hypothesis
     confidence: float = 0.5
-    sources: List[str] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
     last_checked: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-    derived_from: List[str] = field(default_factory=list)
+    derived_from: list[str] = field(default_factory=list)
     title: str = ""
     body: str = ""
 
@@ -96,7 +94,7 @@ class BeliefArtifact:
             f"{self.body}\n"
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "claim_id": self.claim_id,
             "entity": self.entity,
@@ -148,12 +146,12 @@ class VaultManager:
     verification, action, and evolution artifacts pass through here.
     """
 
-    def __init__(self, config: Optional[VaultConfig] = None):
+    def __init__(self, config: VaultConfig | None = None):
         self.config = config or VaultConfig()
         self._base = self.config.path
         self._initialized = False
 
-    def ensure_structure(self) -> Dict[str, Any]:
+    def ensure_structure(self) -> dict[str, Any]:
         """Create the vault directory structure if it doesn't exist."""
         if self._initialized:
             return {"status": "already_initialized", "path": str(self._base)}
@@ -194,7 +192,7 @@ class VaultManager:
 
     # â”€â”€ Belief Operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def write_belief(self, artifact: BeliefArtifact) -> Dict[str, Any]:
+    def write_belief(self, artifact: BeliefArtifact) -> dict[str, Any]:
         """Write a belief artifact to the vault."""
         self.ensure_structure()
 
@@ -213,7 +211,7 @@ class VaultManager:
             "entity": artifact.entity,
         }
 
-    def read_belief(self, entity: str) -> Optional[Dict[str, Any]]:
+    def read_belief(self, entity: str) -> dict[str, Any] | None:
         """Read a belief artifact by entity name."""
         self.ensure_structure()
         beliefs_dir = self._base / "beliefs"
@@ -240,7 +238,7 @@ class VaultManager:
             "body": body,
         }
 
-    def list_beliefs(self) -> List[Dict[str, Any]]:
+    def list_beliefs(self) -> list[dict[str, Any]]:
         """List all belief artifacts with their frontmatter."""
         self.ensure_structure()
         beliefs_dir = self._base / "beliefs"
@@ -264,7 +262,7 @@ class VaultManager:
 
     # â”€â”€ Verification Operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def write_verification(self, artifact: VerificationArtifact) -> Dict[str, Any]:
+    def write_verification(self, artifact: VerificationArtifact) -> dict[str, Any]:
         """Write a verification artifact to the vault."""
         self.ensure_structure()
 
@@ -297,7 +295,7 @@ class VaultManager:
         title: str,
         content: str,
         action_type: str = "report",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Write an action output (report, PR brief, etc.) to the vault."""
         self.ensure_structure()
 
@@ -321,7 +319,7 @@ class VaultManager:
 
     # â”€â”€ Coverage Index â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def coverage_index(self) -> Dict[str, Any]:
+    def coverage_index(self) -> dict[str, Any]:
         """Build a coverage index of all beliefs for the router."""
         beliefs = self.list_beliefs()
 
@@ -341,7 +339,7 @@ class VaultManager:
             "entities": [b["entity"] for b in beliefs],
         }
 
-    def mark_beliefs_stale_for_files(self, changed_files: List[str]) -> Dict[str, Any]:
+    def mark_beliefs_stale_for_files(self, changed_files: list[str]) -> dict[str, Any]:
         """Mark beliefs stale when their sources overlap the changed files."""
         self.ensure_structure()
 
@@ -356,9 +354,9 @@ class VaultManager:
             if p
         }
 
-        updated_entities: List[str] = []
-        updated_files: List[str] = []
-        already_stale: List[str] = []
+        updated_entities: list[str] = []
+        updated_files: list[str] = []
+        already_stale: list[str] = []
 
         beliefs_dir = self._base / "beliefs"
         for md in beliefs_dir.rglob("*.md"):
@@ -464,7 +462,7 @@ def _safe_filename(s: str) -> str:
     return safe[:80] or "untitled"
 
 
-def _parse_frontmatter(content: str) -> Optional[Dict[str, str]]:
+def _parse_frontmatter(content: str) -> dict[str, str] | None:
     """Parse YAML frontmatter from markdown content."""
     if not content.startswith("---"):
         return None
@@ -473,7 +471,7 @@ def _parse_frontmatter(content: str) -> Optional[Dict[str, str]]:
         return None
 
     fm_text = content[3:end].strip()
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     for line in fm_text.splitlines():
         if ":" in line and not line.strip().startswith("-"):
             key, _, value = line.partition(":")
@@ -484,7 +482,7 @@ def _parse_frontmatter(content: str) -> Optional[Dict[str, str]]:
     return result if result else None
 
 
-def _extract_sources(content: str) -> List[str]:
+def _extract_sources(content: str) -> list[str]:
     """Extract sources list from frontmatter."""
     if not content.startswith("---"):
         return []
@@ -493,7 +491,7 @@ def _extract_sources(content: str) -> List[str]:
         return []
 
     fm_text = content[3:end].strip().splitlines()
-    sources: List[str] = []
+    sources: list[str] = []
     in_sources = False
     for line in fm_text:
         stripped = line.strip()

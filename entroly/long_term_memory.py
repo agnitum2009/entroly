@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
 
 logger = logging.getLogger("entroly.long_term_memory")
 
@@ -56,6 +55,8 @@ _create_memory = None
 try:
     from hippocampus_sharp_memory import (
         HippocampusEngine as _HippocampusEngine,
+    )
+    from hippocampus_sharp_memory import (
         create_memory as _create_memory,
     )
     _HIPPOCAMPUS_AVAILABLE = True

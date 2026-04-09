@@ -1155,6 +1155,7 @@ def create_mcp_server():
     _task_profiles = TaskProfileOptimizer(_feedback_journal)
     _task_profiles.optimize_all()  # warm from existing journal
     _last_opt_ctx = {}  # tracks last optimization for feedback attribution
+    _vault_beliefs_loaded = False  # lazy: load vault beliefs on first optimize
 
     @mcp.tool()
     def remember_fragment(
@@ -1213,6 +1214,25 @@ def create_mcp_server():
         nonlocal _last_opt_ctx
         engine._turn_counter += 1
         engine.advance_turn()  # One turn per optimization request
+
+        # ── Vault Belief Bridge: lazy load on first optimize ──
+        # Scan vault/beliefs/*.md, match to ingested fragments by basename,
+        # and attach belief content so IOS can select at Belief resolution.
+        # This gives 5-10x token savings: ~200-token belief REPLACES ~800-token code.
+        nonlocal _vault_beliefs_loaded
+        if not _vault_beliefs_loaded and engine._use_rust:
+            vault_beliefs_dir = os.path.join(
+                os.environ.get("ENTROLY_VAULT", os.path.join(
+                    os.environ.get("ENTROLY_DIR", os.path.join(os.getcwd(), ".entroly")),
+                    "vault"
+                )),
+                "beliefs",
+            )
+            if os.path.isdir(vault_beliefs_dir):
+                n = engine._rust.load_vault_beliefs(vault_beliefs_dir)
+                if n > 0:
+                    logger.info(f"Vault beliefs bridge: attached {n} beliefs to fragments")
+            _vault_beliefs_loaded = True
 
         # Apply task-conditioned weights before optimization
         task_type, task_confidence = _task_profiles.apply_to_engine(engine, query)

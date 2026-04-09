@@ -5,9 +5,11 @@ On first startup (or when no persistent index exists), automatically
 walks all git-tracked files, ingests relevant source code, and builds
 the dependency graph. Zero manual configuration needed.
 
-Usage:
-    from entroly.auto_index import auto_index
-    auto_index(engine)  # Ingests all git-tracked source files
+LPI (Lazy Progressive Index):
+  Phase 1: Parallel file reading via ThreadPoolExecutor (I/O-bound)
+  Phase 2: Single batch_ingest() PyO3 call — rayon inside Rust processes
+           SimHash, skeleton, entropy for ALL files simultaneously.
+  Result:  1 PyO3 crossing instead of N. O(N) entropy instead of O(N²).
 """
 
 from __future__ import annotations
@@ -75,10 +77,10 @@ SKIP_PATTERNS = frozenset({
 # Max file size to ingest (50 KB — larger files are usually generated)
 MAX_FILE_BYTES = 50 * 1024
 
-# Gap #45: Hard ceiling for massive files (500 KB) — never even attempt to read
+# Hard ceiling for massive files (500 KB) — never even attempt to read
 ABSOLUTE_MAX_BYTES = 500 * 1024
 
-# Gap #46: Binary/media file extensions — skip without error
+# Binary/media file extensions — skip without error
 BINARY_EXTENSIONS = frozenset({
     # Images
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff",
@@ -140,10 +142,7 @@ def _walk_fallback(project_dir: str) -> list[str]:
 
 
 def _load_entrolyignore(project_dir: str) -> list[str]:
-    """Load .entrolyignore patterns (one glob per line, like .gitignore).
-
-    Supports simple glob patterns: *.generated.ts, vendor/**, test_fixtures/*
-    """
+    """Load .entrolyignore patterns (one glob per line, like .gitignore)."""
     ignore_path = os.path.join(project_dir, ".entrolyignore")
     if not os.path.isfile(ignore_path):
         return []
@@ -181,12 +180,12 @@ def _should_index(rel_path: str) -> bool:
     if basename in SKIP_PATTERNS:
         return False
 
-    # Gap #46: Skip binary/media files cleanly
+    # Skip binary/media files cleanly
     _, ext = os.path.splitext(basename)
     if ext.lower() in BINARY_EXTENSIONS:
         return False
 
-    # Gap #35: .entrolyignore support
+    # .entrolyignore support
     if _ignore_patterns and _matches_ignore(rel_path):
         return False
 
@@ -203,12 +202,93 @@ def _estimate_tokens(content: str) -> int:
     return max(1, len(content) // 4)
 
 
+def _priority_score(rel_path: str) -> int:
+    """
+    LPI Priority Score — determines Phase 2 batch order.
+
+    Returns 0-100. Higher = processed first by Rust's entropy sample.
+    Core source files score 80-100, migrations/generated score 0-20.
+
+    This ensures the fixed 50-fragment entropy sample in batch_ingest
+    sees real source code, giving accurate information_score() values.
+    """
+    p = rel_path.lower().replace("\\", "/")
+    name = os.path.basename(p)
+    _, ext = os.path.splitext(name)
+
+    # Dead weight — migrations, generated, CI
+    dead = (
+        "/migrations/" in p
+        or "/prisma/migrations" in p
+        or "/clickhouse/migrations" in p
+        or "/__snapshots__/" in p
+        or "/.github/" in p
+        or "/dist/" in p
+        or "/build/" in p
+        or "/.next/" in p
+        or "/node_modules/" in p
+        or name in ("yarn.lock", "package-lock.json", "pnpm-lock.yaml", "Cargo.lock")
+    )
+    if dead:
+        return 5
+
+    # Core source — index first (these dominate the entropy sample)
+    hot = (
+        "/src/" in p
+        or "/lib/" in p
+        or "/app/" in p
+        or "/core/" in p
+        or "/server/" in p
+        or "/api/" in p
+        or "/routes/" in p
+        or "/handlers/" in p
+        or "/services/" in p
+        or "/models/" in p
+        or "/engine/" in p
+        or "/worker/" in p
+        or "/pkg/" in p
+        or "/internal/" in p
+    )
+    if hot and ext in {".ts", ".tsx", ".py", ".rs", ".go", ".java", ".kt"}:
+        return 90
+
+    # Schema / types
+    if "schema" in name:
+        return 75
+
+    # Tests — useful but lower priority than implementation
+    is_test = (
+        "/test/" in p or "/tests/" in p or "/spec/" in p
+        or name.startswith("test_")
+        or name.endswith(".test.ts") or name.endswith(".spec.ts")
+        or name.endswith(".test.py") or name.endswith("_test.go")
+    )
+    if is_test:
+        return 40
+
+    # Root-level config files
+    if ext in {".toml", ".yml", ".yaml", ".json"} and "/" not in p.strip("/"):
+        return 65
+
+    return 50
+
+
 def auto_index(
     engine: EntrolyEngine,
     project_dir: str | None = None,
     force: bool = False,
 ) -> dict:
-    """Auto-index a project's codebase into the Entroly engine.
+    """Auto-index a project's codebase using the Lazy Progressive Index (LPI).
+
+    LPI strategy for massive codebases (VSCode ~30K files, langfuse ~2.6K):
+    - Phase 1: Parallel file reading (ThreadPoolExecutor, I/O-bound, 16 threads)
+    - Phase 2: Single batch_ingest() PyO3 call with rayon inside Rust:
+               * SimHash: all files in parallel
+               * Skeleton extraction: all files in parallel
+               * Entropy: O(N) fixed sample (not O(N²) growing)
+               * Dedup: sequential after parallel pre-computation
+
+    Key property: 1 PyO3 crossing instead of N. For VSCode = 30K crossings → 1.
 
     Args:
         engine: The EntrolyEngine instance to index into.
@@ -221,7 +301,7 @@ def auto_index(
     project_dir = project_dir or os.getcwd()
     project_dir = os.path.abspath(project_dir)
 
-    # Gap #35: Load .entrolyignore patterns
+    # Load .entrolyignore patterns
     global _ignore_patterns
     _ignore_patterns = _load_entrolyignore(project_dir)
     if _ignore_patterns:
@@ -243,7 +323,7 @@ def auto_index(
 
     t0 = time.perf_counter()
 
-    # Discover files
+    # Discover files via git (respects .gitignore — <100ms even for 100K files)
     files = _git_ls_files(project_dir)
     if not files:
         files = _walk_fallback(project_dir)
@@ -251,37 +331,37 @@ def auto_index(
     else:
         discovery = "git"
 
-    # Filter to indexable files
+    # Filter to indexable files, sort by priority so hot source is first
     all_indexable = [f for f in files if _should_index(f)]
     if len(all_indexable) > MAX_FILES:
         logger.warning(
             f"Codebase has {len(all_indexable)} indexable files, capping at {MAX_FILES}. "
             f"Set ENTROLY_MAX_FILES to increase the limit."
         )
+
+    # Priority sort: hot source first → entropy sample sees real code
+    all_indexable.sort(key=_priority_score, reverse=True)
     indexable = all_indexable[:MAX_FILES]
 
-    # Parallel file reading for I/O-bound speedup
+    t_discovery = time.perf_counter()
+
+    # ── Phase 1: Parallel file reading (I/O-bound) ─────────────────────────────
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _read_file(rel_path: str) -> tuple | None:
-        """Read a single file. Returns (content, rel_path, tokens) or None."""
         abs_path = os.path.join(project_dir, rel_path)
         try:
             size = os.path.getsize(abs_path)
-            # Gap #45: Hard ceiling — never read massive files
             if size > ABSOLUTE_MAX_BYTES:
-                logger.debug(f"Skipping massive file ({size:,}B): {rel_path}")
                 return ("skip_size",)
             if size > MAX_FILE_BYTES or size == 0:
                 return ("skip_size",) if size > MAX_FILE_BYTES else None
         except OSError:
             return None
-        # Gap #46: Quick binary detection — check for null bytes in first 8KB
         try:
             with open(abs_path, "rb") as fb:
-                header = fb.read(8192)
-                if b"\x00" in header:
-                    return ("skip_read",)  # Binary file
+                if b"\x00" in fb.read(8192):
+                    return ("skip_read",)
         except OSError:
             return ("skip_read",)
         try:
@@ -291,60 +371,109 @@ def auto_index(
             return ("skip_read",)
         if not content.strip():
             return None
-        tokens = _estimate_tokens(content)
-        return (content, rel_path, tokens)
+        return (content, rel_path, _estimate_tokens(content))
 
-    indexed = 0
-    total_tokens = 0
+    batch: list[tuple[str, str, int]] = []
     skipped_size = 0
     skipped_read = 0
 
-    max_workers = min(8, (os.cpu_count() or 4))
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    # 16 threads: double the I/O workers vs old code — most time is disk wait
+    max_workers = min(16, (os.cpu_count() or 4) * 2)
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="lpi") as pool:
         futures = {pool.submit(_read_file, rp): rp for rp in indexable}
         for future in as_completed(futures):
-            result_data = future.result()
-            if result_data is None:
+            data = future.result()
+            if data is None:
                 continue
-            if result_data == ("skip_size",):
+            if data[0] == "skip_size":
                 skipped_size += 1
                 continue
-            if result_data == ("skip_read",):
+            if data[0] == "skip_read":
                 skipped_read += 1
                 continue
+            content, rel_path, tokens = data
+            batch.append((content, f"file:{rel_path}", tokens))
 
-            content, rel_path, tokens = result_data
+    t_read = time.perf_counter()
+
+    # ── Phase 2: Single PyO3 call into Rust batch_ingest ───────────────────────
+    # Rust rayon parallelises SimHash + skeleton + entropy.
+    # O(N) entropy: fixed 50-fragment sample, not growing window.
+    # Single GIL acquisition for the whole batch.
+    indexed = 0
+    total_tokens = 0
+
+    if engine._use_rust and batch:
+        try:
+            r = engine._rust.batch_ingest(batch)
+            indexed = int(r.get("ingested", 0))
+            total_tokens = int(r.get("total_tokens", 0))
+            p1 = r.get('phase1_ms', '?')
+            p2 = r.get('phase2_ms', '?')
+            p3 = r.get('phase3_ms', '?')
+            logger.debug(
+                f"batch_ingest: {indexed}/{len(batch)} in {r.get('duration_ms', 0)}ms "
+                f"(P1={p1}ms P2={p2}ms P3={p3}ms, {r.get('duplicates', 0)} dups)"
+            )
+        except AttributeError:
+            # Older entroly_core without batch_ingest — graceful fallback
+            logger.debug("batch_ingest unavailable, falling back to per-file ingest")
+            for content, source, tokens in batch:
+                engine.ingest_fragment(
+                    content=content, source=source,
+                    token_count=tokens, is_pinned=False,
+                )
+                indexed += 1
+                total_tokens += tokens
+    else:
+        for content, source, tokens in batch:
             engine.ingest_fragment(
-                content=content,
-                source=f"file:{rel_path}",
-                token_count=tokens,
-                is_pinned=False,
+                content=content, source=source,
+                token_count=tokens, is_pinned=False,
             )
             indexed += 1
             total_tokens += tokens
 
     elapsed = time.perf_counter() - t0
-
-    # Build dependency graph from import analysis
-    if engine._use_rust and indexed > 0:
-        try:
-            # Trigger a lightweight optimize to build the dep graph
-            # (dep graph is built during optimize, not ingest)
-            engine.optimize_context(token_budget=1, query="")
-        except Exception:
-            pass  # Non-critical, dep graph will build on first real optimize
+    read_s = t_read - t_discovery
+    ingest_s = time.perf_counter() - t_read
 
     logger.info(
         f"Auto-indexed {indexed} files ({total_tokens:,} tokens) "
         f"in {elapsed:.1f}s via {discovery} "
-        f"[skipped: {skipped_size} too large, {skipped_read} unreadable]"
+        f"[read={read_s:.1f}s ingest={ingest_s:.1f}s "
+        f"skipped: {skipped_size} too large, {skipped_read} unreadable]"
     )
+
+    # ── Vault Belief Bridge: attach pre-compiled beliefs to fragments ──
+    # After batch ingest, scan vault/beliefs/*.md and match to fragments
+    # by source basename. This enables IOS Belief resolution: ~200-token
+    # summaries that REPLACE ~800-token code (5-10× token savings).
+    beliefs_attached = 0
+    if engine._use_rust:
+        vault_beliefs_dir = os.path.join(
+            os.environ.get("ENTROLY_VAULT", os.path.join(
+                os.environ.get("ENTROLY_DIR", os.path.join(project_dir, ".entroly")),
+                "vault"
+            )),
+            "beliefs",
+        )
+        if os.path.isdir(vault_beliefs_dir):
+            try:
+                beliefs_attached = engine._rust.load_vault_beliefs(vault_beliefs_dir)
+                if beliefs_attached > 0:
+                    logger.info(f"Vault beliefs: attached {beliefs_attached} beliefs to fragments")
+            except Exception as e:
+                logger.debug(f"Vault belief loading failed: {e}")
 
     return {
         "status": "indexed",
         "files_indexed": indexed,
         "total_tokens": total_tokens,
+        "beliefs_attached": beliefs_attached,
         "duration_s": round(elapsed, 2),
+        "read_s": round(read_s, 2),
+        "ingest_s": round(ingest_s, 2),
         "discovery_method": discovery,
         "skipped_too_large": skipped_size,
         "skipped_unreadable": skipped_read,

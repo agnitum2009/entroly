@@ -15,15 +15,11 @@ Pipeline:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 import re
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .vault import BeliefArtifact, VaultManager
 
@@ -52,8 +48,8 @@ class CodeEntity:
     line: int = 0
     docstring: str = ""
     signature: str = ""
-    dependencies: List[str] = field(default_factory=list)
-    dependents: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    dependents: list[str] = field(default_factory=list)
 
     @property
     def qualified_name(self) -> str:
@@ -66,9 +62,9 @@ class ModuleMap:
     """A module-level view of the codebase."""
     name: str
     file_path: str
-    entities: List[CodeEntity] = field(default_factory=list)
-    imports: List[str] = field(default_factory=list)
-    exports: List[str] = field(default_factory=list)
+    entities: list[CodeEntity] = field(default_factory=list)
+    imports: list[str] = field(default_factory=list)
+    exports: list[str] = field(default_factory=list)
     description: str = ""
     loc: int = 0
     language: str = ""
@@ -82,8 +78,8 @@ class CompilationResult:
     modules_mapped: int = 0
     diagrams_generated: int = 0
     files_processed: int = 0
-    errors: List[str] = field(default_factory=list)
-    belief_ids: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    belief_ids: list[str] = field(default_factory=list)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -109,7 +105,7 @@ _RS_CONST = re.compile(r'^(?:pub\s+)?(?:const|static)\s+(\w+)', re.M)
 _RS_DOC = re.compile(r'///\s*(.*)')
 
 
-def extract_entities(content: str, file_path: str) -> List[CodeEntity]:
+def extract_entities(content: str, file_path: str) -> list[CodeEntity]:
     """Extract code entities from a source file."""
     ext = Path(file_path).suffix.lower()
     if ext == ".py":
@@ -121,8 +117,8 @@ def extract_entities(content: str, file_path: str) -> List[CodeEntity]:
     return []
 
 
-def _extract_python_entities(content: str, file_path: str) -> List[CodeEntity]:
-    entities: List[CodeEntity] = []
+def _extract_python_entities(content: str, file_path: str) -> list[CodeEntity]:
+    entities: list[CodeEntity] = []
     lines = content.splitlines()
 
     # Classes
@@ -174,8 +170,8 @@ def _extract_python_entities(content: str, file_path: str) -> List[CodeEntity]:
     return entities
 
 
-def _extract_rust_entities(content: str, file_path: str) -> List[CodeEntity]:
-    entities: List[CodeEntity] = []
+def _extract_rust_entities(content: str, file_path: str) -> list[CodeEntity]:
+    entities: list[CodeEntity] = []
     lines = content.splitlines()
 
     for m in _RS_STRUCT.finditer(content):
@@ -226,8 +222,8 @@ def _extract_rust_entities(content: str, file_path: str) -> List[CodeEntity]:
     return entities
 
 
-def _extract_js_entities(content: str, file_path: str) -> List[CodeEntity]:
-    entities: List[CodeEntity] = []
+def _extract_js_entities(content: str, file_path: str) -> list[CodeEntity]:
+    entities: list[CodeEntity] = []
     # Class
     for m in re.finditer(r'(?:export\s+)?class\s+(\w+)', content):
         line = content[:m.start()].count('\n') + 1
@@ -243,7 +239,7 @@ def _extract_js_entities(content: str, file_path: str) -> List[CodeEntity]:
     return entities
 
 
-def _get_next_docstring(lines: List[str], after_line: int) -> str:
+def _get_next_docstring(lines: list[str], after_line: int) -> str:
     """Get Python docstring after a def/class line."""
     for i in range(after_line, min(after_line + 3, len(lines))):
         stripped = lines[i].strip()
@@ -263,16 +259,14 @@ def _get_next_docstring(lines: List[str], after_line: int) -> str:
     return ""
 
 
-def _get_rust_doc(lines: List[str], before_line: int) -> str:
+def _get_rust_doc(lines: list[str], before_line: int) -> str:
     """Get Rust /// doc comments above a line."""
     docs = []
     for i in range(before_line - 1, max(before_line - 10, -1), -1):
         if i < 0 or i >= len(lines):
             break
         stripped = lines[i].strip()
-        if stripped.startswith("///"):
-            docs.append(stripped[3:].strip())
-        elif stripped.startswith("//!"):
+        if stripped.startswith("///") or stripped.startswith("//!"):
             docs.append(stripped[3:].strip())
         elif not stripped or stripped.startswith("#["):
             continue
@@ -290,11 +284,11 @@ class EntityResolver:
     """Resolves and links entities across files."""
 
     def __init__(self):
-        self._entities: Dict[str, CodeEntity] = {}  # qualified_name -> entity
-        self._by_name: Dict[str, List[CodeEntity]] = {}  # name -> entities
-        self._dep_graph: Dict[str, Set[str]] = {}  # entity -> dependencies
+        self._entities: dict[str, CodeEntity] = {}  # qualified_name -> entity
+        self._by_name: dict[str, list[CodeEntity]] = {}  # name -> entities
+        self._dep_graph: dict[str, set[str]] = {}  # entity -> dependencies
 
-    def add_entities(self, entities: List[CodeEntity]) -> None:
+    def add_entities(self, entities: list[CodeEntity]) -> None:
         for e in entities:
             qn = e.qualified_name
             self._entities[qn] = e
@@ -314,12 +308,12 @@ class EntityResolver:
                     if target in self._entities:
                         self._entities[target].dependents.append(qn)
 
-    def dependency_graph(self) -> Dict[str, List[str]]:
+    def dependency_graph(self) -> dict[str, list[str]]:
         return {k: sorted(v) for k, v in self._dep_graph.items() if v}
 
-    def get_modules(self) -> Dict[str, List[CodeEntity]]:
+    def get_modules(self) -> dict[str, list[CodeEntity]]:
         """Group entities by file path (module)."""
-        modules: Dict[str, List[CodeEntity]] = {}
+        modules: dict[str, list[CodeEntity]] = {}
         for e in self._entities.values():
             modules.setdefault(e.file_path, []).append(e)
         return modules
@@ -331,7 +325,7 @@ class EntityResolver:
 
 def synthesize_module_map(
     file_path: str,
-    entities: List[CodeEntity],
+    entities: list[CodeEntity],
     content: str,
 ) -> ModuleMap:
     """Create a ModuleMap for a single file."""
@@ -354,7 +348,7 @@ def synthesize_module_map(
 
 
 def generate_dependency_diagram(
-    dep_graph: Dict[str, List[str]],
+    dep_graph: dict[str, list[str]],
     title: str = "Dependency Graph",
 ) -> str:
     """Generate a Mermaid dependency diagram from the entity graph."""
@@ -377,7 +371,7 @@ def generate_dependency_diagram(
     return "\n".join(lines)
 
 
-def generate_module_diagram(modules: Dict[str, List[CodeEntity]]) -> str:
+def generate_module_diagram(modules: dict[str, list[CodeEntity]]) -> str:
     """Generate a Mermaid module-level architecture diagram."""
     lines = ["flowchart TB"]
     for fpath, entities in sorted(modules.items()):
@@ -461,7 +455,7 @@ class BeliefCompiler:
     def compile_paths(
         self,
         root_dir: str,
-        relative_paths: List[str],
+        relative_paths: list[str],
     ) -> CompilationResult:
         """Compile a targeted set of relative paths inside a source tree."""
         root = Path(root_dir)
@@ -470,8 +464,8 @@ class BeliefCompiler:
             result.errors.append(f"Not a directory: {root_dir}")
             return result
 
-        selected: List[Path] = []
-        seen: Set[Path] = set()
+        selected: list[Path] = []
+        seen: set[Path] = set()
         for rel in relative_paths:
             candidate = (root / rel).resolve()
             if candidate in seen:
@@ -491,14 +485,14 @@ class BeliefCompiler:
     def _compile_paths(
         self,
         root: Path,
-        file_paths: List[Path],
+        file_paths: list[Path],
     ) -> CompilationResult:
         """Compile a set of absolute file paths under a root into beliefs."""
         result = CompilationResult()
         resolver = EntityResolver()
 
         # Phase 1: Extract entities from all source files
-        all_modules: Dict[str, ModuleMap] = {}
+        all_modules: dict[str, ModuleMap] = {}
         for fpath in file_paths:
             try:
                 content = fpath.read_text(encoding="utf-8", errors="replace")
@@ -573,7 +567,7 @@ class BeliefCompiler:
         )
         return result
 
-    def compile_file(self, file_path: str, content: str) -> Optional[BeliefArtifact]:
+    def compile_file(self, file_path: str, content: str) -> BeliefArtifact | None:
         """Compile a single file into a belief artifact."""
         entities = extract_entities(content, file_path)
         if not entities:
@@ -588,7 +582,7 @@ class BeliefCompiler:
         self,
         module: ModuleMap,
         file_path: str,
-        resolver: Optional[EntityResolver] = None,
+        resolver: EntityResolver | None = None,
     ) -> BeliefArtifact:
         """Convert a ModuleMap to a BeliefArtifact."""
         # Build body
@@ -624,7 +618,7 @@ class BeliefCompiler:
 
         dep_graph = resolver.dependency_graph() if resolver else {}
         module_entities = {e.qualified_name for e in module.entities}
-        linked_deps: List[str] = []
+        linked_deps: list[str] = []
         for entity_name in module_entities:
             for dep in dep_graph.get(entity_name, []):
                 dep_name = dep.split("::")[-1]
@@ -658,7 +652,7 @@ class BeliefCompiler:
 
     def _create_architecture_belief(
         self,
-        modules: Dict[str, ModuleMap],
+        modules: dict[str, ModuleMap],
         root: str,
     ) -> BeliefArtifact:
         """Create a high-level architecture overview belief."""
@@ -676,7 +670,7 @@ class BeliefCompiler:
             body_parts.append(f"- **{mod.name}** ({mod.language}) — {n_types} types, {n_fns} fns, {mod.loc} LOC")
 
         # Language breakdown
-        langs: Dict[str, int] = {}
+        langs: dict[str, int] = {}
         for mod in modules.values():
             langs[mod.language] = langs.get(mod.language, 0) + mod.loc
         body_parts.append("\n## Language Distribution")
@@ -693,7 +687,7 @@ class BeliefCompiler:
             derived_from=["belief_compiler", "architecture_synthesizer"],
         )
 
-    def _walk_source_files(self, root: Path, max_files: int) -> List[Path]:
+    def _walk_source_files(self, root: Path, max_files: int) -> list[Path]:
         """Walk and yield source files, skipping excluded directories."""
         files = []
         for dirpath, dirnames, filenames in os.walk(root):

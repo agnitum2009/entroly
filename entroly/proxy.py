@@ -761,6 +761,16 @@ class PromptCompilerProxy:
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers, body)
 
+        # ── Tool Output Compression ──
+        # Always-on: compress tool/MCP call results (test output, git diffs,
+        # build errors, log output, directory listings, JSON blobs).
+        # Works transparently at the proxy layer — zero user setup.
+        if "messages" in body:
+            from .proxy_transform import compress_tool_messages
+            body["messages"], tool_tokens_saved = compress_tool_messages(body["messages"])
+            if tool_tokens_saved > 0:
+                logger.info(f"Tool output compression: {tool_tokens_saved} tokens saved")
+
         # ── Progressive conversation compression ──
         # Surgically compress tool calls/results and thinking blocks when
         # context utilization is high, before the optimization pipeline runs.
@@ -1172,9 +1182,12 @@ class PromptCompilerProxy:
             ios_str = f", diversity={ios_div:.2f}" if ios_div else ""
             # Resolution breakdown
             full_count = sum(1 for f in selected if f.get("variant") == "full")
+            belief_count = sum(1 for f in selected if f.get("variant") == "belief")
             skel_count = sum(1 for f in selected if f.get("variant") == "skeleton")
             ref_count = sum(1 for f in selected if f.get("variant") == "reference")
             res_parts = [f"{full_count}F"]
+            if belief_count:
+                res_parts.append(f"{belief_count}B")
             if skel_count:
                 res_parts.append(f"{skel_count}S")
             if ref_count:
@@ -1217,6 +1230,8 @@ class PromptCompilerProxy:
         _feedback_enabled = self._enable_passive_feedback and bool(selected_frag_ids)
         _frag_ids = selected_frag_ids or []
         _buffer_cap = ImplicitFeedbackTracker._MAX_BUFFER_BYTES
+        # Capture selected fragments for per-variant utilization tracking (Change 4)
+        _selected_frags = getattr(self, '_last_context_fragments', []) if _feedback_enabled else []
 
         async def event_generator():
             buffer = [] if _feedback_enabled else None
@@ -1266,6 +1281,27 @@ class PromptCompilerProxy:
                                 reward, len(_frag_ids),
                             )
                             _engine.record_reward(_frag_ids, reward)
+
+                            # ── Closed-Loop Belief Utilization (Change 4) ──
+                            # Compute per-variant utilization from the reward signal.
+                            # The reward is a proxy for "did the LLM use this context?"
+                            # We split by variant to learn: are beliefs sufficient?
+                            if _selected_frags and hasattr(_engine, 'update_belief_utilization'):
+                                belief_scores = [
+                                    max(0, reward) for f in _selected_frags
+                                    if f.get("variant") == "belief"
+                                ]
+                                full_scores = [
+                                    max(0, reward) for f in _selected_frags
+                                    if f.get("variant", "full") == "full"
+                                ]
+                                if belief_scores or full_scores:
+                                    belief_util = sum(belief_scores) / max(len(belief_scores), 1)
+                                    full_util = sum(full_scores) / max(len(full_scores), 1)
+                                    try:
+                                        _engine.update_belief_utilization(belief_util, full_util)
+                                    except Exception:
+                                        pass  # Never fail on feedback
                 except Exception:
                     pass  # Never fail on feedback
 
@@ -1310,6 +1346,14 @@ class PromptCompilerProxy:
                 resp_headers["X-Entroly-Causal-Interventional"] = str(self._last_causal_interventional)
                 resp_headers["X-Entroly-Causal-Gravity-Sources"] = str(self._last_causal_gravity_sources)
                 resp_headers["X-Entroly-Causal-Mean-Mass"] = f"{self._last_causal_mean_mass:.4f}"
+            # Belief Utilization Auto-Tuning headers (Change 4)
+            try:
+                if hasattr(self.engine, 'get_belief_util_ema'):
+                    resp_headers["X-Entroly-Belief-Util-EMA"] = f"{self.engine.get_belief_util_ema():.4f}"
+                    resp_headers["X-Entroly-Full-Util-EMA"] = f"{self.engine.get_full_util_ema():.4f}"
+                    resp_headers["X-Entroly-Belief-Info-Factor"] = f"{self.engine.get_belief_info_factor():.4f}"
+            except Exception:
+                pass
 
         return StreamingResponse(
             event_generator(),

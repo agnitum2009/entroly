@@ -2233,3 +2233,91 @@ fn escape_json(s: &str) -> String {
         .replace('\r', "")
         .replace('\t', "\\t")
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Wiki-Link Graph Extraction
+// ═══════════════════════════════════════════════════════════════════
+
+/// Extract `[[wiki-links]]` from belief body text.
+///
+/// These links form the edges of the Knowledge Graph. When IOS selects
+/// a belief for module A, and that belief contains `[[B]]`, module B's
+/// belief should get a relevance boost — enabling transitive context
+/// loading through the vault knowledge graph.
+///
+/// The [[wiki-link]] syntax mirrors Obsidian and is already generated
+/// by the BeliefCompiler's `## Linked Beliefs` section.
+///
+/// O(N) single pass over the belief text. Returns unique links.
+pub fn extract_wiki_links(body: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut seen = HashSet::new();
+    let bytes = body.as_bytes();
+    let len = bytes.len();
+    let mut pos = 0;
+
+    while pos + 3 < len {
+        if bytes[pos] == b'[' && bytes[pos + 1] == b'[' {
+            let start = pos + 2;
+            // Find closing ]]
+            if let Some(rel_end) = body[start..].find("]]") {
+                let link = body[start..start + rel_end].trim();
+                if !link.is_empty() && !seen.contains(link) {
+                    seen.insert(link.to_string());
+                    links.push(link.to_string());
+                }
+                pos = start + rel_end + 2;
+            } else {
+                break; // unclosed [[ — no more valid links
+            }
+        } else {
+            pos += 1;
+        }
+    }
+    links
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wiki_link_extraction_basic() {
+        let body = "This module uses [[proxy_transform]] and [[vault]] for context.";
+        let links = extract_wiki_links(body);
+        assert_eq!(links, vec!["proxy_transform", "vault"]);
+    }
+
+    #[test]
+    fn test_wiki_link_extraction_with_headers() {
+        let body = "# Architecture\n\n## Linked Beliefs\n- [[knapsack_sds]]\n- [[channel]]\n- [[semantic_dedup]]\n";
+        let links = extract_wiki_links(body);
+        assert_eq!(links, vec!["knapsack_sds", "channel", "semantic_dedup"]);
+    }
+
+    #[test]
+    fn test_wiki_link_extraction_empty() {
+        assert!(extract_wiki_links("No links here").is_empty());
+        assert!(extract_wiki_links("").is_empty());
+    }
+
+    #[test]
+    fn test_wiki_link_extraction_dedup() {
+        let body = "Uses [[vault]] and also [[vault]] again.";
+        let links = extract_wiki_links(body);
+        assert_eq!(links, vec!["vault"]); // deduplicated
+    }
+
+    #[test]
+    fn test_wiki_link_extraction_unclosed() {
+        let body = "Starts [[link but never closes";
+        assert!(extract_wiki_links(body).is_empty());
+    }
+
+    #[test]
+    fn test_wiki_link_extraction_whitespace() {
+        let body = "Uses [[ spaced_link ]] here.";
+        let links = extract_wiki_links(body);
+        assert_eq!(links, vec!["spaced_link"]); // trimmed
+    }
+}

@@ -15,14 +15,13 @@ the same entity or query pattern, this logger:
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class MissRecord:
     flow_attempted: str = ""
     reason: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "query": self.query,
             "entity_key": self.entity_key,
@@ -61,7 +60,7 @@ class EvolutionLogger:
 
     def __init__(
         self,
-        vault_path: Optional[str] = None,
+        vault_path: str | None = None,
         gap_threshold: int = 3,
     ):
         """
@@ -74,10 +73,10 @@ class EvolutionLogger:
         self._gap_threshold = gap_threshold
 
         # In-memory miss log
-        self._misses: List[MissRecord] = []
+        self._misses: list[MissRecord] = []
 
         # Entity -> miss count for clustering
-        self._entity_misses: Dict[str, int] = defaultdict(int)
+        self._entity_misses: dict[str, int] = defaultdict(int)
 
         # Already-reported gaps (avoid spamming vault)
         self._reported_gaps: set[str] = set()
@@ -89,7 +88,7 @@ class EvolutionLogger:
         intent: str = "",
         flow_attempted: str = "",
         reason: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Record a miss and check if it triggers a skill gap."""
         record = MissRecord(
             query=query,
@@ -104,7 +103,7 @@ class EvolutionLogger:
         count = self._entity_misses[entity_key]
         is_gap = count >= self._gap_threshold and entity_key not in self._reported_gaps
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "status": "recorded",
             "entity_key": entity_key,
             "miss_count": count,
@@ -122,7 +121,7 @@ class EvolutionLogger:
 
         return result
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Return evolution statistics."""
         return {
             "total_misses": len(self._misses),
@@ -137,7 +136,7 @@ class EvolutionLogger:
             ),
         }
 
-    def _write_skill_gap(self, entity_key: str, miss_count: int) -> Dict[str, Any]:
+    def _write_skill_gap(self, entity_key: str, miss_count: int) -> dict[str, Any]:
         """Write a skill gap report to vault/evolution/."""
         if not self._vault_path:
             return {"status": "no_vault", "entity_key": entity_key}

@@ -20,8 +20,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .vault import VaultManager
 
@@ -42,10 +41,10 @@ class SkillSpec:
     trigger: str = ""  # pattern that triggers this skill
     procedure: str = ""  # step-by-step SOP
     tool_code: str = ""  # Python tool implementation
-    test_cases: List[Dict[str, str]] = field(default_factory=list)
+    test_cases: list[dict[str, str]] = field(default_factory=list)
     status: str = "draft"  # draft, testing, promoted, pruned
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    metrics: Dict[str, float] = field(default_factory=dict)
+    metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -54,7 +53,7 @@ class BenchmarkResult:
     skill_id: str
     passed: int = 0
     failed: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     fitness_score: float = 0.0  # 0.0-1.0
     duration_ms: float = 0
 
@@ -74,7 +73,7 @@ class SkillSynthesizer:
     def synthesize_from_gap(
         self,
         entity_key: str,
-        failing_queries: List[str],
+        failing_queries: list[str],
         intent: str = "",
     ) -> SkillSpec:
         """Generate a skill spec from a gap report."""
@@ -108,10 +107,10 @@ class SkillSynthesizer:
             status="draft",
         )
 
-    def _extract_common_terms(self, queries: List[str]) -> List[str]:
+    def _extract_common_terms(self, queries: list[str]) -> list[str]:
         """Find common terms across failing queries."""
         import re
-        word_counts: Dict[str, int] = {}
+        word_counts: dict[str, int] = {}
         for q in queries:
             words = set(
                 w.lower() for w in re.findall(r'[a-zA-Z_]\w+', q) if len(w) > 3
@@ -126,7 +125,7 @@ class SkillSynthesizer:
             key=lambda w: -word_counts[w],
         )
 
-    def _generate_procedure(self, entity: str, intent: str, queries: List[str]) -> str:
+    def _generate_procedure(self, entity: str, intent: str, queries: list[str]) -> str:
         return (
             f"# Procedure for {entity}\n\n"
             f"## Trigger\n"
@@ -175,7 +174,7 @@ class SandboxedRunner:
     def __init__(self, timeout_seconds: float = 10.0):
         self._timeout = timeout_seconds
 
-    def run_tool(self, tool_code: str, query: str) -> Dict[str, Any]:
+    def run_tool(self, tool_code: str, query: str) -> dict[str, Any]:
         """Execute a skill tool in a subprocess sandbox."""
         # Write tool to temp file and run in subprocess
         import tempfile
@@ -230,7 +229,7 @@ class SandboxedRunner:
 class SkillBenchmark:
     """Evaluates skill fitness by running test cases."""
 
-    def __init__(self, runner: Optional[SandboxedRunner] = None):
+    def __init__(self, runner: SandboxedRunner | None = None):
         self._runner = runner or SandboxedRunner()
 
     def benchmark(self, skill: SkillSpec) -> BenchmarkResult:
@@ -283,9 +282,9 @@ class SkillEngine:
     def create_skill(
         self,
         entity_key: str,
-        failing_queries: List[str],
+        failing_queries: list[str],
         intent: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new skill from a gap report."""
         self._vault.ensure_structure()
         spec = self._synthesizer.synthesize_from_gap(entity_key, failing_queries, intent)
@@ -343,7 +342,7 @@ class SkillEngine:
             "path": str(skill_dir),
         }
 
-    def benchmark_skill(self, skill_id: str) -> Dict[str, Any]:
+    def benchmark_skill(self, skill_id: str) -> dict[str, Any]:
         """Benchmark a skill and update its metrics."""
         spec = self._load_skill(skill_id)
         if not spec:
@@ -364,7 +363,7 @@ class SkillEngine:
             "errors": result.errors[:5],
         }
 
-    def promote_or_prune(self, skill_id: str) -> Dict[str, Any]:
+    def promote_or_prune(self, skill_id: str) -> dict[str, Any]:
         """Evaluate a skill for promotion or pruning."""
         spec = self._load_skill(skill_id)
         if not spec:
@@ -401,7 +400,7 @@ class SkillEngine:
             "new_status": spec.status,
         }
 
-    def list_skills(self) -> List[Dict[str, Any]]:
+    def list_skills(self) -> list[dict[str, Any]]:
         """List all skills in the registry."""
         self._vault.ensure_structure()
         skills_dir = self._vault.config.path / "evolution" / "skills"
@@ -434,7 +433,7 @@ class SkillEngine:
 
     # ── Private ──────────────────────────────────
 
-    def _load_skill(self, skill_id: str) -> Optional[SkillSpec]:
+    def _load_skill(self, skill_id: str) -> SkillSpec | None:
         """Load a skill spec from the vault."""
         skill_dir = self._vault.config.path / "evolution" / "skills" / skill_id
         if not skill_dir.exists():

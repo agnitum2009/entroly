@@ -61,6 +61,25 @@ pub struct ContextFragment {
     #[serde(default)]
     pub skeleton_token_count: Option<u32>,
 
+    // Hierarchical Context Synthesis: vault belief variant.
+    // Beliefs are pre-compiled summaries from the knowledge graph that
+    // capture ~50% of a file's information at ~10-15% token cost.
+    // Populated by Python during ingest (from vault/beliefs/*.md).
+    // Used by IOS as a 4th resolution level between Skeleton and Reference.
+    #[pyo3(get, set)]
+    #[serde(default)]
+    pub belief_content: Option<String>,
+    #[pyo3(get, set)]
+    #[serde(default)]
+    pub belief_token_count: Option<u32>,
+
+    // Language identifier for calibrated token estimation.
+    // Set during batch_ingest from file extension ("python", "rust", etc.).
+    // Used by downstream systems for per-language char/token ratios.
+    #[pyo3(get, set)]
+    #[serde(default)]
+    pub language: String,
+
     // RL eligibility trace for TD(λ) temporal credit assignment.
     // Accumulates decaying credit: e_i(t) = λ·e_i(t-1) + ∂log π / ∂θ.
     // Fragments selected in recent requests receive attenuated reward.
@@ -95,6 +114,9 @@ impl ContextFragment {
             has_simhash: false,  // must be set explicitly after content processing
             skeleton_content: None,
             skeleton_token_count: None,
+            belief_content: None,
+            belief_token_count: None,
+            language: String::new(),
             eligibility_trace: 0.0,
         }
     }

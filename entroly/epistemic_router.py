@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +80,8 @@ class BeliefCoverage:
     fresh: bool = False
     verified: bool = False
     confidence: float = 0.0
-    matching_claims: List[str] = field(default_factory=list)
-    stalest_check: Optional[str] = None  # ISO-8601 of oldest last_checked
+    matching_claims: list[str] = field(default_factory=list)
+    stalest_check: str | None = None  # ISO-8601 of oldest last_checked
 
 
 @dataclass
@@ -95,7 +95,7 @@ class RoutingDecision:
     routing_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     timestamp: float = field(default_factory=time.time)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "routing_id": self.routing_id,
             "flow": self.flow.value,
@@ -118,7 +118,7 @@ class RoutingDecision:
 # ══════════════════════════════════════════════════════════════════════
 
 # Keyword patterns for intent classification (order matters — first match wins)
-_INTENT_PATTERNS: List[tuple[EpistemicIntent, re.Pattern]] = [
+_INTENT_PATTERNS: list[tuple[EpistemicIntent, re.Pattern]] = [
     (EpistemicIntent.INCIDENT, re.compile(
         r"\b(incident|outage|spike|latency|down|crash|alert|page|5\d\d|timeout|"
         r"spiking|degraded|error.rate|p99|on.?call)\b", re.I)),
@@ -208,7 +208,7 @@ class EpistemicRouter:
 
     def __init__(
         self,
-        vault_path: Optional[str] = None,
+        vault_path: str | None = None,
         miss_threshold: int = 3,
         freshness_hours: float = 24.0,
         min_confidence: float = 0.6,
@@ -228,10 +228,10 @@ class EpistemicRouter:
         self._min_confidence = min_confidence
 
         # Miss counter: entity -> consecutive miss count
-        self._miss_counts: Dict[str, int] = {}
+        self._miss_counts: dict[str, int] = {}
 
         # Routing history for observability
-        self._history: List[RoutingDecision] = []
+        self._history: list[RoutingDecision] = []
 
         if self._vault_path:
             logger.info(f"EpistemicRouter: vault at {self._vault_path}")
@@ -242,7 +242,7 @@ class EpistemicRouter:
         self,
         query: str,
         is_event: bool = False,
-        event_type: Optional[str] = None,
+        event_type: str | None = None,
     ) -> RoutingDecision:
         """
         Route a query or event through the epistemic decision matrix.
@@ -314,10 +314,10 @@ class EpistemicRouter:
         logger.info(f"EpistemicRouter: miss recorded for '{key}' "
                      f"(count={self._miss_counts[key]})")
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Return routing statistics for observability."""
-        flow_counts: Dict[str, int] = {}
-        intent_counts: Dict[str, int] = {}
+        flow_counts: dict[str, int] = {}
+        intent_counts: dict[str, int] = {}
         for d in self._history:
             flow_counts[d.flow.value] = flow_counts.get(d.flow.value, 0) + 1
             intent_counts[d.intent.value] = intent_counts.get(d.intent.value, 0) + 1
@@ -431,11 +431,11 @@ class EpistemicRouter:
         if not terms:
             return BeliefCoverage()
 
-        matching_claims: List[str] = []
+        matching_claims: list[str] = []
         min_confidence = 1.0
         all_fresh = True
         all_verified = True
-        stalest: Optional[str] = None
+        stalest: str | None = None
 
         for md_file in beliefs_dir.rglob("*.md"):
             try:
@@ -507,7 +507,7 @@ class EpistemicRouter:
             stalest_check=stalest,
         )
 
-    def _parse_frontmatter(self, content: str) -> Optional[Dict[str, str]]:
+    def _parse_frontmatter(self, content: str) -> dict[str, str] | None:
         """Parse YAML frontmatter from a markdown file."""
         if not content.startswith("---"):
             return None
@@ -516,7 +516,7 @@ class EpistemicRouter:
             return None
 
         fm_text = content[3:end].strip()
-        result: Dict[str, str] = {}
+        result: dict[str, str] = {}
         for line in fm_text.splitlines():
             if ":" in line:
                 key, _, value = line.partition(":")

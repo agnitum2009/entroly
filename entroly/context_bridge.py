@@ -32,16 +32,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from .server import EntrolyEngine
 from .config import EntrolyConfig
-from .provenance import build_provenance, ContextProvenance
+from .provenance import ContextProvenance, build_provenance
+from .server import EntrolyEngine
 
 logger = logging.getLogger("entroly.context_bridge")
 
@@ -57,10 +55,10 @@ class SessionContext:
     total_raw_tokens: int
     fragments_selected: int
     fragments_total: int
-    provenance: Optional[ContextProvenance] = None
+    provenance: ContextProvenance | None = None
     memory_entries_loaded: int = 0
     daily_log_entries_loaded: int = 0
-    sections: Dict[str, str] = field(default_factory=dict)
+    sections: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,8 +75,8 @@ class HeartbeatResult:
     """Result of an optimized heartbeat check."""
     context_str: str
     tokens_used: int
-    check_types: List[str]
-    budgets: Dict[str, int]
+    check_types: list[str]
+    budgets: dict[str, int]
 
 
 # ── NKBE Allocator (Python implementation) ────────────────────────────
@@ -114,14 +112,14 @@ class NkbeAllocator:
         self.learning_rate = learning_rate
         self.nash_iterations = nash_iterations
 
-        self._agents: Dict[str, _AgentState] = {}
-        self._weights: Dict[str, float] = {}
+        self._agents: dict[str, _AgentState] = {}
+        self._weights: dict[str, float] = {}
 
     def register_agent(
         self,
         name: str,
         weight: float = 1.0,
-        min_budget: Optional[int] = None,
+        min_budget: int | None = None,
     ) -> None:
         """Register an agent for budget allocation."""
         self._agents[name] = _AgentState(
@@ -144,7 +142,7 @@ class NkbeAllocator:
             self._agents[agent_name].fragment_count = fragment_count
             self._agents[agent_name].total_tokens = total_tokens
 
-    def allocate(self) -> Dict[str, int]:
+    def allocate(self) -> dict[str, int]:
         """
         Run NKBE allocation. Returns per-agent budgets.
 
@@ -237,7 +235,7 @@ class NkbeAllocator:
 
         return budgets
 
-    def reinforce(self, outcomes: Dict[str, float]) -> None:
+    def reinforce(self, outcomes: dict[str, float]) -> None:
         """
         REINFORCE weight update based on agent outcomes.
 
@@ -290,14 +288,14 @@ class CognitiveBus:
     def __init__(self, novelty_threshold: float = 0.3, alpha: float = 0.1):
         self.novelty_threshold = novelty_threshold
         self.alpha = alpha
-        self._subscribers: Dict[str, _Subscriber] = {}
-        self._history: List[_BusEvent] = []
+        self._subscribers: dict[str, _Subscriber] = {}
+        self._history: list[_BusEvent] = []
         self._tick: int = 0
         self._total_published: int = 0
         self._total_delivered: int = 0
         self._total_suppressed: int = 0
 
-    def subscribe(self, agent_name: str, event_types: Optional[List[str]] = None) -> None:
+    def subscribe(self, agent_name: str, event_types: list[str] | None = None) -> None:
         """Register an agent as event subscriber."""
         filters = set(event_types) if event_types else set(self.EVENT_TYPES)
         self._subscribers[agent_name] = _Subscriber(
@@ -378,7 +376,7 @@ class CognitiveBus:
 
         return deliveries
 
-    def drain(self, agent_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def drain(self, agent_name: str, limit: int = 10) -> list[dict[str, Any]]:
         """Drain events for an agent, highest priority first."""
         sub = self._subscribers.get(agent_name)
         if not sub:
@@ -395,7 +393,7 @@ class CognitiveBus:
             })
         return events
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "tick": self._tick,
             "total_published": self._total_published,
@@ -418,8 +416,8 @@ class _BusEvent:
 class _Subscriber:
     name: str
     filters: set
-    rates: Dict[str, "_RateCell"]
-    inbox: List[Tuple[float, _BusEvent]]
+    rates: dict[str, _RateCell]
+    inbox: list[tuple[float, _BusEvent]]
     _seen_hashes: set = field(default_factory=set)
 
 
@@ -489,7 +487,7 @@ class AgentContext:
         workspace_path: str | Path = "~/.agent/workspace",
         token_budget: int = 32_000,
         quality: str = "balanced",
-        config: Optional[EntrolyConfig] = None,
+        config: EntrolyConfig | None = None,
     ):
         self.workspace_path = Path(workspace_path).expanduser()
         self.token_budget = token_budget
@@ -506,8 +504,8 @@ class AgentContext:
         self._bus = CognitiveBus()
 
         # Track what's been ingested
-        self._ingested_files: Dict[str, str] = {}  # path → fragment_id
-        self._section_ids: Dict[str, List[str]] = {}  # section → [fragment_ids]
+        self._ingested_files: dict[str, str] = {}  # path → fragment_id
+        self._section_ids: dict[str, list[str]] = {}  # section → [fragment_ids]
 
         # Session state
         self._session_start = time.time()
@@ -515,7 +513,7 @@ class AgentContext:
 
     # ── Workspace File Ingestion ──────────────────────────────────────
 
-    def ingest_workspace(self) -> Dict[str, Any]:
+    def ingest_workspace(self) -> dict[str, Any]:
         """
         Ingest all OpenClaw workspace files as Entroly fragments.
 
@@ -634,7 +632,7 @@ class AgentContext:
     def load_session_context(
         self,
         query: str = "",
-        token_budget: Optional[int] = None,
+        token_budget: int | None = None,
         session_type: str = "main",
     ) -> SessionContext:
         """
@@ -673,7 +671,7 @@ class AgentContext:
         total_raw = result.get("total_tokens_available", 0)
 
         # Build context string from selected fragments
-        sections: Dict[str, str] = {}
+        sections: dict[str, str] = {}
         memory_count = 0
         log_count = 0
 
@@ -750,9 +748,9 @@ class AgentContext:
 
     def allocate_budgets(
         self,
-        agents: List[str],
-        weights: Optional[Dict[str, float]] = None,
-    ) -> Dict[str, int]:
+        agents: list[str],
+        weights: dict[str, float] | None = None,
+    ) -> dict[str, int]:
         """
         NKBE allocation of token budget across multiple agents.
 
@@ -769,8 +767,8 @@ class AgentContext:
 
     def optimize_heartbeat(
         self,
-        check_types: List[str],
-        total_budget: Optional[int] = None,
+        check_types: list[str],
+        total_budget: int | None = None,
     ) -> HeartbeatResult:
         """
         Optimize a heartbeat check using NKBE budget allocation.
@@ -812,10 +810,10 @@ class AgentContext:
 
     def filter_group_chat(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         agent_expertise: str = "",
         max_messages: int = 20,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """
         Filter group chat messages by relevance using entropy scoring.
 
@@ -879,13 +877,13 @@ class AgentContext:
         """Publish an event to the cognitive bus."""
         return self._bus.publish(source, event_type, payload, surprise)
 
-    def drain_events(self, agent_name: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def drain_events(self, agent_name: str, limit: int = 10) -> list[dict[str, Any]]:
         """Drain events for an agent from the cognitive bus."""
         return self._bus.drain(agent_name, limit)
 
     # ── Stats ─────────────────────────────────────────────────────────
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get combined statistics."""
         engine_stats = self._engine.get_stats()
         return {
@@ -923,7 +921,7 @@ def _safe_ln(x: float) -> float:
     return math.log(max(x, 1e-15))
 
 
-def _split_memory_sections(content: str) -> List[str]:
+def _split_memory_sections(content: str) -> list[str]:
     """Split MEMORY.md into sections by markdown headers."""
     sections = []
     current = []
@@ -938,7 +936,7 @@ def _split_memory_sections(content: str) -> List[str]:
     return sections
 
 
-def _split_tool_sections(content: str) -> List[str]:
+def _split_tool_sections(content: str) -> list[str]:
     """Split TOOLS.md into per-tool sections."""
     sections = []
     current = []
@@ -995,9 +993,9 @@ class AgentState:
     ticks_in_tier: int = 0
     task_count: int = 0
     total_tokens_used: int = 0
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     depth: int = 0
-    children: List[str] = field(default_factory=list)
+    children: list[str] = field(default_factory=list)
     fib_position: float = 0.0  # Fibonacci hash scatter (from ebbiforge)
 
 
@@ -1027,8 +1025,8 @@ class LODManager:
     SATURATION_ALERT_RATIO = 0.05
 
     def __init__(self):
-        self._agents: Dict[str, AgentState] = {}
-        self._alerts: List[str] = []
+        self._agents: dict[str, AgentState] = {}
+        self._alerts: list[str] = []
         self._tick: int = 0
         self._promotions: int = 0
         self._demotions: int = 0
@@ -1036,7 +1034,7 @@ class LODManager:
     def register(
         self,
         agent_id: str,
-        parent_id: Optional[str] = None,
+        parent_id: str | None = None,
         initial_tier: str = LodTier.DORMANT,
     ) -> AgentState:
         """Register an agent in the LOD system."""
@@ -1074,7 +1072,7 @@ class LODManager:
             parent = self._agents[state.parent_id]
             parent.children = [c for c in parent.children if c != agent_id]
 
-    def update_load(self, agent_id: str, load_factor: float) -> Optional[str]:
+    def update_load(self, agent_id: str, load_factor: float) -> str | None:
         """Update agent load and trigger tier transitions.
 
         Returns new tier if transition occurred, else None.
@@ -1115,7 +1113,7 @@ class LODManager:
             return state.tier
         return None
 
-    def tick(self) -> List[str]:
+    def tick(self) -> list[str]:
         """Advance clock. Returns any alerts generated."""
         self._tick += 1
         self._alerts.clear()
@@ -1133,14 +1131,14 @@ class LODManager:
                 )
         return self._alerts
 
-    def get_active_agents(self) -> List[str]:
+    def get_active_agents(self) -> list[str]:
         """Get IDs of all ACTIVE or HEAVY agents (eligible for tasks)."""
         return [
             a.agent_id for a in self._agents.values()
             if a.tier in (LodTier.ACTIVE, LodTier.HEAVY)
         ]
 
-    def get_budget_weights(self) -> Dict[str, float]:
+    def get_budget_weights(self) -> dict[str, float]:
         """Get NKBE weight hints based on LOD tier.
 
         HEAVY agents get 2x weight, ACTIVE get 1x,
@@ -1155,7 +1153,7 @@ class LODManager:
             # DORMANT and SATURATED get no budget
         return weights
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         tier_counts = {LodTier.DORMANT: 0, LodTier.ACTIVE: 0,
                        LodTier.SATURATED: 0, LodTier.HEAVY: 0}
         for a in self._agents.values():
@@ -1192,7 +1190,7 @@ class SubagentOrchestrator:
 
     def __init__(
         self,
-        agent_ctx: "AgentContext",
+        agent_ctx: AgentContext,
         lod: LODManager,
         bus: CognitiveBus,
     ):
@@ -1201,7 +1199,7 @@ class SubagentOrchestrator:
         self._bus = bus
         self._spawn_count = 0
 
-    def can_spawn(self, parent_id: str) -> Tuple[bool, str]:
+    def can_spawn(self, parent_id: str) -> tuple[bool, str]:
         """Check if a parent agent can spawn a new subagent."""
         parent = self._lod._agents.get(parent_id)
         if parent is None:
@@ -1220,7 +1218,7 @@ class SubagentOrchestrator:
         child_id: str,
         task_query: str,
         budget_fraction: float = 0.2,
-    ) -> Optional[SessionContext]:
+    ) -> SessionContext | None:
         """Spawn a subagent with inherited context.
 
         Args:
@@ -1274,7 +1272,7 @@ class SubagentOrchestrator:
         """Despawn a subagent and release its resources."""
         self._lod.unregister(child_id)
 
-    def get_tree(self, root_id: str) -> Dict[str, Any]:
+    def get_tree(self, root_id: str) -> dict[str, Any]:
         """Get the subagent tree rooted at an agent."""
         state = self._lod._agents.get(root_id)
         if state is None:
@@ -1290,7 +1288,7 @@ class SubagentOrchestrator:
             tree["children"].append(self.get_tree(child_id))
         return tree
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {"spawn_count": self._spawn_count}
 
 
@@ -1319,14 +1317,14 @@ class CronSessionManager:
 
     def __init__(
         self,
-        agent_ctx: "AgentContext",
+        agent_ctx: AgentContext,
         lod: LODManager,
         bus: CognitiveBus,
     ):
         self._ctx = agent_ctx
         self._lod = lod
         self._bus = bus
-        self._jobs: Dict[str, "CronSessionManager.CronJob"] = {}
+        self._jobs: dict[str, CronSessionManager.CronJob] = {}
 
     def schedule(
         self,
@@ -1348,7 +1346,7 @@ class CronSessionManager:
         self._jobs.pop(agent_id, None)
         self._lod.unregister(agent_id)
 
-    def get_due_jobs(self, current_time: Optional[float] = None) -> List["CronSessionManager.CronJob"]:
+    def get_due_jobs(self, current_time: float | None = None) -> list[CronSessionManager.CronJob]:
         """Get jobs that are due for execution."""
         now = current_time or time.time()
         due = []
@@ -1359,8 +1357,8 @@ class CronSessionManager:
 
     def run_job(
         self,
-        job: "CronSessionManager.CronJob",
-        current_time: Optional[float] = None,
+        job: CronSessionManager.CronJob,
+        current_time: float | None = None,
     ) -> SessionContext:
         """Execute a cron job — promote to ACTIVE, load minimal context, return."""
         now = current_time or time.time()
@@ -1385,7 +1383,7 @@ class CronSessionManager:
 
         return context
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "total_jobs": len(self._jobs),
             "jobs": {
@@ -1480,7 +1478,7 @@ class MemoryBridge:
         self,
         query: str,
         top_k: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Recall relevant long-term memories for context injection.
 
         Returns fragments suitable for injecting into EntrolyEngine.
@@ -1494,7 +1492,7 @@ class MemoryBridge:
         if self.active:
             self._ltm.tick()
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         if not self.active:
             return {"active": False}
         ltm_stats = self._ltm.stats()
@@ -1567,7 +1565,7 @@ class HCCEngine:
     """
 
     def __init__(self):
-        self._fragments: List[HCCFragment] = []
+        self._fragments: list[HCCFragment] = []
 
     def add_fragment(
         self,
@@ -1597,7 +1595,7 @@ class HCCEngine:
         self._fragments.append(frag)
         return frag
 
-    def optimize(self, token_budget: int) -> List[HCCFragment]:
+    def optimize(self, token_budget: int) -> list[HCCFragment]:
         """Run rate-distortion optimization.
 
         Returns fragments with assigned_level set to optimal compression.
@@ -1684,19 +1682,7 @@ def _generate_skeleton(content: str) -> str:
     for line in lines:
         stripped = line.strip()
         # Keep headers
-        if stripped.startswith("#"):
-            skeleton_lines.append(line)
-        # Keep function/class definitions
-        elif stripped.startswith(("def ", "class ", "fn ", "pub fn ", "struct ", "impl ")):
-            skeleton_lines.append(line)
-        # Keep imports
-        elif stripped.startswith(("import ", "from ", "use ", "require")):
-            skeleton_lines.append(line)
-        # Keep key markers
-        elif any(kw in stripped.lower() for kw in ["todo", "fixme", "important", "note:", "warning"]):
-            skeleton_lines.append(line)
-        # Keep non-empty short lines (likely key statements)
-        elif stripped and len(stripped) < 60 and not stripped.startswith(("//", "#", "/*", "*", "---")):
+        if stripped.startswith("#") or stripped.startswith(("def ", "class ", "fn ", "pub fn ", "struct ", "impl ")) or stripped.startswith(("import ", "from ", "use ", "require")) or any(kw in stripped.lower() for kw in ["todo", "fixme", "important", "note:", "warning"]) or stripped and len(stripped) < 60 and not stripped.startswith(("//", "#", "/*", "*", "---")):
             skeleton_lines.append(line)
     return "\n".join(skeleton_lines)
 
@@ -1746,19 +1732,19 @@ class AutoTune:
         self._drift_penalty = drift_penalty
 
         # Tunable weights (start at sensible defaults)
-        self._weights: Dict[str, float] = {
+        self._weights: dict[str, float] = {
             "entropy": 1.0,
             "relevance": 1.0,
             "recency": 0.5,
             "diversity": 0.3,
         }
         # Polyak-averaged weights (more stable, used for actual optimization)
-        self._polyak_weights: Dict[str, float] = dict(self._weights)
+        self._polyak_weights: dict[str, float] = dict(self._weights)
         # EMA of recent outcomes
         self._outcome_ema: float = 0.5
         self._update_count: int = 0
 
-    def update(self, outcome: float, metrics: Dict[str, float]) -> Dict[str, float]:
+    def update(self, outcome: float, metrics: dict[str, float]) -> dict[str, float]:
         """Update weights based on optimization outcome.
 
         Args:
@@ -1801,11 +1787,11 @@ class AutoTune:
 
         return dict(self._polyak_weights)
 
-    def get_weights(self) -> Dict[str, float]:
+    def get_weights(self) -> dict[str, float]:
         """Get current Polyak-averaged weights (stable for production use)."""
         return dict(self._polyak_weights)
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         return {
             "weights": dict(self._weights),
             "polyak_weights": dict(self._polyak_weights),
@@ -1876,7 +1862,7 @@ class MultiAgentContext(AgentContext):
         child_id: str,
         task_query: str,
         budget_fraction: float = 0.2,
-    ) -> Optional[SessionContext]:
+    ) -> SessionContext | None:
         """Spawn a subagent with inherited context."""
         return self._subagents.spawn(parent_id, child_id, task_query, budget_fraction)
 
@@ -1884,7 +1870,7 @@ class MultiAgentContext(AgentContext):
         """Despawn a subagent."""
         self._subagents.despawn(child_id)
 
-    def get_agent_tree(self, root_id: str = "main") -> Dict[str, Any]:
+    def get_agent_tree(self, root_id: str = "main") -> dict[str, Any]:
         """Get the full agent tree."""
         return self._subagents.get_tree(root_id)
 
@@ -1916,7 +1902,7 @@ class MultiAgentContext(AgentContext):
     def load_hcc_context(
         self,
         query: str = "",
-        token_budget: Optional[int] = None,
+        token_budget: int | None = None,
     ) -> SessionContext:
         """Load context with HCC 3-level compression.
 
@@ -1993,8 +1979,8 @@ class MultiAgentContext(AgentContext):
     def record_autotune_outcome(
         self,
         success: bool,
-        metrics: Optional[Dict[str, float]] = None,
-    ) -> Dict[str, float]:
+        metrics: dict[str, float] | None = None,
+    ) -> dict[str, float]:
         """Record outcome for AutoTune weight calibration.
 
         Args:
@@ -2010,7 +1996,7 @@ class MultiAgentContext(AgentContext):
 
     # ── LOD API ───────────────────────────────────────────────────
 
-    def update_agent_load(self, agent_id: str, load: float) -> Optional[str]:
+    def update_agent_load(self, agent_id: str, load: float) -> str | None:
         """Update agent load factor, returns new tier if changed."""
         return self._lod.update_load(agent_id, load)
 
@@ -2021,7 +2007,7 @@ class MultiAgentContext(AgentContext):
 
     # ── Enhanced Stats ────────────────────────────────────────────
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         base = super().get_stats()
         base["lod"] = self._lod.stats()
         base["subagents"] = self._subagents.stats()

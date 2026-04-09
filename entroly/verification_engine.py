@@ -20,9 +20,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from .vault import VaultManager, VerificationArtifact, _parse_frontmatter, _extract_body
+from .vault import VaultManager, VerificationArtifact, _extract_body, _parse_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class CoverageGap:
 class BlastRadius:
     """Impact analysis result for a change."""
     changed_entity: str
-    affected_beliefs: List[str] = field(default_factory=list)
-    affected_entities: List[str] = field(default_factory=list)
+    affected_beliefs: list[str] = field(default_factory=list)
+    affected_entities: list[str] = field(default_factory=list)
     risk_level: str = "low"
     description: str = ""
 
@@ -74,9 +74,9 @@ class BlastRadius:
 @dataclass
 class VerificationReport:
     """Complete verification pass result."""
-    contradictions: List[Contradiction] = field(default_factory=list)
-    stale_beliefs: List[StaleReport] = field(default_factory=list)
-    coverage_gaps: List[CoverageGap] = field(default_factory=list)
+    contradictions: list[Contradiction] = field(default_factory=list)
+    stale_beliefs: list[StaleReport] = field(default_factory=list)
+    coverage_gaps: list[CoverageGap] = field(default_factory=list)
     total_beliefs_checked: int = 0
     verified_count: int = 0
     stale_count: int = 0
@@ -84,7 +84,7 @@ class VerificationReport:
     mean_confidence: float = 0.0
     artifacts_written: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_beliefs_checked": self.total_beliefs_checked,
             "verified_count": self.verified_count,
@@ -177,7 +177,7 @@ class VerificationEngine:
         )
         return report
 
-    def check_belief(self, claim_id: str) -> Dict[str, Any]:
+    def check_belief(self, claim_id: str) -> dict[str, Any]:
         """Verify a single belief by claim_id."""
         beliefs = self._load_all_beliefs()
         target = None
@@ -218,12 +218,12 @@ class VerificationEngine:
 
     def blast_radius(
         self,
-        changed_files: List[str],
+        changed_files: list[str],
     ) -> BlastRadius:
         """Analyze the blast radius of file changes."""
         beliefs = self._load_all_beliefs()
-        affected_beliefs: List[str] = []
-        affected_entities: List[str] = []
+        affected_beliefs: list[str] = []
+        affected_entities: list[str] = []
 
         for belief in beliefs:
             sources = belief.get("sources_list", [])
@@ -257,7 +257,7 @@ class VerificationEngine:
             description=f"{n} beliefs affected by changes to {', '.join(changed_files)}",
         )
 
-    def coverage_gaps(self, source_dir: str) -> List[CoverageGap]:
+    def coverage_gaps(self, source_dir: str) -> list[CoverageGap]:
         """Find source files with no corresponding belief."""
         gaps = []
         beliefs = self._load_all_beliefs()
@@ -286,7 +286,7 @@ class VerificationEngine:
 
     # ── Private Methods ────────────────────────────────────────────
 
-    def _load_all_beliefs(self) -> List[Dict[str, Any]]:
+    def _load_all_beliefs(self) -> list[dict[str, Any]]:
         """Load all beliefs with parsed frontmatter."""
         self._vault.ensure_structure()
         beliefs_dir = self._vault.config.path / "beliefs"
@@ -325,7 +325,7 @@ class VerificationEngine:
 
         return results
 
-    def _check_staleness(self, beliefs: List[Dict]) -> List[StaleReport]:
+    def _check_staleness(self, beliefs: list[dict]) -> list[StaleReport]:
         """Check beliefs for staleness."""
         stale = []
         now = datetime.now(timezone.utc)
@@ -375,12 +375,12 @@ class VerificationEngine:
 
         return stale
 
-    def _detect_contradictions(self, beliefs: List[Dict]) -> List[Contradiction]:
+    def _detect_contradictions(self, beliefs: list[dict]) -> list[Contradiction]:
         """Detect contradictions between beliefs."""
         contradictions = []
 
         # Group beliefs by entity for comparison
-        by_entity: Dict[str, List[Dict]] = {}
+        by_entity: dict[str, list[dict]] = {}
         for b in beliefs:
             entity = b.get("entity", "")
             if entity:
@@ -437,7 +437,7 @@ class VerificationEngine:
 
         return contradictions
 
-    def _write_contradiction_report(self, contradictions: List[Contradiction]) -> None:
+    def _write_contradiction_report(self, contradictions: list[Contradiction]) -> None:
         """Write contradiction report to vault."""
         body_parts = [f"Found {len(contradictions)} contradiction(s).\n"]
         for i, c in enumerate(contradictions, 1):
@@ -457,7 +457,7 @@ class VerificationEngine:
         )
         self._vault.write_verification(artifact)
 
-    def _write_staleness_report(self, stale: List[StaleReport]) -> None:
+    def _write_staleness_report(self, stale: list[StaleReport]) -> None:
         """Write staleness report to vault."""
         body_parts = [f"Found {len(stale)} stale belief(s).\n"]
         for s in stale:

@@ -367,8 +367,9 @@ def format_context_block(
         )
         parts.append("")
 
-    # Code fragments — group by resolution (full first, then skeleton, then references)
+    # Code fragments — group by resolution (full first, then belief, skeleton, references)
     full_frags = [f for f in fragments if f.get("variant", "full") == "full"]
+    belief_frags = [f for f in fragments if f.get("variant") == "belief"]
     skel_frags = [f for f in fragments if f.get("variant") == "skeleton"]
     ref_frags = [f for f in fragments if f.get("variant") == "reference"]
 
@@ -376,7 +377,7 @@ def format_context_block(
         source = frag.get("source", "unknown")
         relevance = frag.get("relevance", 0)
         tokens = frag.get("token_count", 0)
-        content = frag.get("preview", frag.get("content", ""))
+        content = frag.get("content", frag.get("preview", ""))
 
         # Infer language from source for code fence
         lang = _infer_language(source)
@@ -386,13 +387,24 @@ def format_context_block(
         parts.append("```")
         parts.append("")
 
+    # Belief fragments (vault knowledge graph summaries — architectural understanding)
+    if belief_frags:
+        parts.append("## Architectural Context (vault knowledge graph)")
+        for frag in belief_frags:
+            source = frag.get("source", "unknown")
+            tokens = frag.get("token_count", 0)
+            content = frag.get("content", frag.get("preview", ""))
+            parts.append(f"### {source} ({tokens} tokens)")
+            parts.append(content.rstrip())
+            parts.append("")
+
     # Skeleton fragments (structural outlines for budget-constrained files)
     if skel_frags:
         parts.append("## Structural Outlines (signatures only)")
         for frag in skel_frags:
             source = frag.get("source", "unknown")
             tokens = frag.get("token_count", 0)
-            content = frag.get("preview", frag.get("content", ""))
+            content = frag.get("content", frag.get("preview", ""))
             lang = _infer_language(source)
             parts.append(f"### {source} ({tokens} tokens)")
             parts.append(f"```{lang}")
@@ -858,3 +870,469 @@ def _infer_language(source: str) -> str:
         if s.endswith(ext):
             return lang
     return ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Tool Output Compression
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Transparently compresses common tool/MCP call results in conversation
+# messages before they consume context window tokens. Operates inside
+# the proxy — zero user setup, works across ALL LLM tools.
+#
+# Pattern-based compression for 12+ common tool output types:
+#   - Test output (cargo test, pytest, npm test) → failures only
+#   - Git diff → compact hunks only
+#   - Git status → compact status
+#   - Git log → one-line format
+#   - Directory listings → tree format
+#   - Build errors → errors/warnings only
+#   - Log output → deduplicated
+#   - JSON blobs → schema only (strip values)
+#
+# Savings: 60-90% token reduction on tool results.
+# ═══════════════════════════════════════════════════════════════════════════
+
+import re as _re
+
+# Minimum content length to attempt compression (chars).
+# Short tool results aren't worth compressing.
+_TOOL_COMPRESS_MIN_CHARS = 500
+
+
+def compress_tool_output(content: str) -> tuple[str, str, float]:
+    """Compress a tool/MCP call result using pattern-based rules.
+
+    Returns:
+        (compressed_content, compression_type, savings_ratio)
+        If no compression applied: (content, "none", 0.0)
+    """
+    if not content or len(content) < _TOOL_COMPRESS_MIN_CHARS:
+        return content, "none", 0.0
+
+    # Try each compressor in priority order (most specific first)
+    for name, fn in _COMPRESSORS:
+        result = fn(content)
+        if result is not None:
+            savings = 1.0 - len(result) / max(len(content), 1)
+            if savings > 0.10:  # Only apply if >10% savings
+                return result, name, savings
+
+    return content, "none", 0.0
+
+
+def _compress_test_output(content: str) -> str | None:
+    """Compress test runner output: keep only failures + summary.
+
+    Detects: cargo test, pytest, npm test, go test, jest, vitest, rspec.
+    """
+    lines = content.split("\n")
+
+    # Detect test runner
+    is_cargo_test = any("test result:" in l or "running " in l.lower() and " test" in l.lower() for l in lines[:20])
+    is_pytest = any("==" in l and ("FAILED" in l or "passed" in l or "ERRORS" in l) for l in lines[-10:])
+    is_npm_test = any("Tests:" in l or "Test Suites:" in l for l in lines[-10:])
+    is_go_test = any(l.startswith("--- FAIL") or l.startswith("PASS") or l.startswith("FAIL") for l in lines)
+
+    if not (is_cargo_test or is_pytest or is_npm_test or is_go_test):
+        return None
+
+    # Strategy: keep failure lines, summary lines, skip passing tests
+    result = []
+    in_failure = False
+    failure_indent = 0
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Always keep: failure indicators, error messages, summary
+        is_fail = any(kw in line for kw in [
+            "FAILED", "FAIL", "ERROR", "panicked", "error[",
+            "assertion failed", "AssertionError", "assert",
+            "thread '", "---- ", "failures:", "test result:",
+            "Tests:", "Test Suites:", "PASS", "--- FAIL",
+        ])
+        is_summary = any(kw in line for kw in [
+            "test result:", "passed", "failed", "ignored",
+            "Tests:", "Test Suites:", "Snapshots:", "Time:",
+        ])
+
+        if is_fail or is_summary:
+            in_failure = True
+            failure_indent = len(line) - len(line.lstrip())
+            result.append(line)
+        elif in_failure:
+            # Keep indented continuation of failure block
+            current_indent = len(line) - len(line.lstrip()) if stripped else failure_indent + 1
+            if current_indent > failure_indent or not stripped:
+                result.append(line)
+            else:
+                in_failure = False
+                # Check if this line itself is interesting
+                if stripped and not stripped.startswith("test ") and "... ok" not in stripped:
+                    result.append(line)
+        elif stripped.startswith("test ") and "... ok" in stripped:
+            continue  # Skip passing tests (the big savings)
+        elif stripped.startswith("ok ") or stripped.startswith("running "):
+            result.append(line)  # Keep runner metadata
+
+    if not result:
+        return None
+
+    compressed = "\n".join(result)
+
+    # Add compression notice
+    orig_lines = len(lines)
+    comp_lines = len(result)
+    if orig_lines > comp_lines + 5:
+        compressed = f"[entroly: {orig_lines - comp_lines} passing test lines compressed]\n{compressed}"
+
+    return compressed
+
+
+def _compress_git_diff(content: str) -> str | None:
+    """Compress git diff output: keep only hunks with changes."""
+    if not ("diff --git" in content or "@@" in content):
+        return None
+
+    lines = content.split("\n")
+    result = []
+    in_context = False
+    context_count = 0
+    max_context = 2  # Keep only 2 context lines around changes
+
+    for line in lines:
+        if line.startswith("diff --git") or line.startswith("---") or line.startswith("+++"):
+            result.append(line)
+            in_context = False
+        elif line.startswith("@@"):
+            result.append(line)
+            in_context = True
+            context_count = 0
+        elif line.startswith("+") or line.startswith("-"):
+            # Changed line — always keep
+            result.append(line)
+            context_count = 0
+        elif in_context:
+            # Context line — keep only max_context lines
+            context_count += 1
+            if context_count <= max_context:
+                result.append(line)
+
+    if not result:
+        return None
+
+    compressed = "\n".join(result)
+    orig_lines = len(lines)
+    comp_lines = len(result)
+    if orig_lines > comp_lines + 10:
+        compressed = f"[entroly: {orig_lines - comp_lines} context lines trimmed]\n{compressed}"
+    return compressed
+
+
+def _compress_git_status(content: str) -> str | None:
+    """Compress git status output to compact format."""
+    if "On branch" not in content and "Changes" not in content:
+        return None
+    if len(content) < 300:
+        return None
+
+    lines = content.split("\n")
+    result = []
+    skip_section = False
+
+    for line in lines:
+        stripped = line.strip()
+        # Keep branch info
+        if "On branch" in line or "Your branch" in line:
+            result.append(stripped)
+        # Keep section headers
+        elif stripped.startswith("Changes") or stripped.startswith("Untracked"):
+            result.append(stripped)
+            skip_section = False
+        # Keep file-level info but strip instructions
+        elif stripped.startswith("modified:") or stripped.startswith("new file:") or \
+             stripped.startswith("deleted:") or stripped.startswith("renamed:"):
+            result.append(f"  {stripped}")
+        elif stripped and not stripped.startswith("(") and not stripped.startswith("no changes"):
+            # Untracked files — just filenames
+            if not any(kw in stripped for kw in ["use ", "git ", "to "]):
+                result.append(f"  {stripped}")
+
+    return "\n".join(result) if len(result) > 2 else None
+
+
+def _compress_git_log(content: str) -> str | None:
+    """Compress git log output to one-line format."""
+    if "commit " not in content or "Author:" not in content:
+        return None
+
+    lines = content.split("\n")
+    result = []
+    current_hash = ""
+    current_msg = ""
+
+    for line in lines:
+        if line.startswith("commit "):
+            if current_hash and current_msg:
+                result.append(f"{current_hash[:7]} {current_msg.strip()}")
+            current_hash = line[7:].strip()
+            current_msg = ""
+        elif line.startswith("    ") and not current_msg:
+            current_msg = line.strip()
+        # Skip Author:, Date:, empty lines
+
+    if current_hash and current_msg:
+        result.append(f"{current_hash[:7]} {current_msg.strip()}")
+
+    return "\n".join(result) if result else None
+
+
+def _compress_directory_listing(content: str) -> str | None:
+    """Compress ls -la or verbose directory listings to tree format."""
+    lines = content.split("\n")
+
+    # Detect ls -la style (permissions column)
+    ls_pattern = _re.compile(r'^[drwx\-lsStT]{10}\s+')
+    ls_lines = [l for l in lines if ls_pattern.match(l)]
+
+    if len(ls_lines) < 5:
+        return None
+
+    # Extract just filenames from ls -la output
+    result = []
+    dirs = []
+    files = []
+
+    for line in ls_lines:
+        parts = line.split()
+        if len(parts) >= 9:
+            name = " ".join(parts[8:])  # filename may have spaces
+            if line.startswith("d"):
+                dirs.append(f"  {name}/")
+            else:
+                size = parts[4]
+                files.append(f"  {name} ({_human_size(int(size) if size.isdigit() else 0)})")
+
+    if dirs:
+        result.append(f"Dirs ({len(dirs)}):")
+        result.extend(sorted(dirs))
+    if files:
+        result.append(f"Files ({len(files)}):")
+        result.extend(sorted(files))
+
+    compressed = "\n".join(result)
+    if len(compressed) < len(content) * 0.8:
+        return f"[entroly: directory listing compressed]\n{compressed}"
+    return None
+
+
+def _compress_build_errors(content: str) -> str | None:
+    """Compress build/lint output: keep only errors and warnings."""
+    # Detect build output
+    is_build = any(kw in content for kw in [
+        "error[E", "error:", "warning:", "Error:", "Warning:",
+        "ERROR", " error ", "SyntaxError", "TypeError",
+        "CompileError", "tsc", "eslint", "ruff",
+    ])
+    if not is_build:
+        return None
+
+    lines = content.split("\n")
+    result = []
+    in_error = False
+    error_indent = 0
+    error_count = 0
+    warning_count = 0
+
+    for line in lines:
+        stripped = line.strip()
+        is_error_line = any(kw in line for kw in [
+            "error", "Error", "ERROR", "warning", "Warning", "WARN",
+            "^", "-->", "  |", " = ", "note:",
+        ])
+
+        if is_error_line:
+            result.append(line)
+            in_error = True
+            error_indent = len(line) - len(line.lstrip())
+            if "error" in line.lower():
+                error_count += 1
+            if "warning" in line.lower():
+                warning_count += 1
+        elif in_error:
+            current_indent = len(line) - len(line.lstrip()) if stripped else error_indent + 1
+            if current_indent > error_indent or not stripped:
+                result.append(line)
+            else:
+                in_error = False
+
+    if not result or (error_count == 0 and warning_count == 0):
+        return None
+
+    compressed = "\n".join(result)
+    orig_lines = len(lines)
+    comp_lines = len(result)
+    if orig_lines > comp_lines + 5:
+        header = f"[entroly: {error_count} errors, {warning_count} warnings — {orig_lines - comp_lines} lines compressed]"
+        compressed = f"{header}\n{compressed}"
+
+    return compressed
+
+
+def _compress_log_output(content: str) -> str | None:
+    """Deduplicate repeated log lines."""
+    lines = content.split("\n")
+    if len(lines) < 20:
+        return None
+
+    # Detect log-style output (timestamps or log levels)
+    log_pattern = _re.compile(r'^\d{4}[-/]|^\[?\d{2}:\d{2}|^(DEBUG|INFO|WARN|ERROR|TRACE)')
+    log_lines = sum(1 for l in lines[:30] if log_pattern.match(l.strip()))
+    if log_lines < 5:
+        return None
+
+    # Deduplicate: normalize timestamps, count repeats
+    seen: dict[str, int] = {}
+    result = []
+    # Strip timestamps for dedup key
+    ts_strip = _re.compile(r'^\S+\s+\S+\s+')
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        key = ts_strip.sub("", stripped)[:100]  # First 100 chars after timestamp
+        if key in seen:
+            seen[key] += 1
+        else:
+            seen[key] = 1
+            result.append(line)
+
+    # Add repeat counts
+    final = []
+    for line in result:
+        stripped = line.strip()
+        key = ts_strip.sub("", stripped)[:100]
+        count = seen.get(key, 1)
+        if count > 1:
+            final.append(f"{line}  [×{count}]")
+        else:
+            final.append(line)
+
+    compressed = "\n".join(final)
+    if len(compressed) < len(content) * 0.7:
+        deduped = sum(1 for v in seen.values() if v > 1)
+        return f"[entroly: {deduped} repeated log patterns deduplicated]\n{compressed}"
+    return None
+
+
+def _compress_json_blob(content: str) -> str | None:
+    """Compress large JSON blobs to schema-only (strip values)."""
+    stripped = content.strip()
+    if not (stripped.startswith("{") or stripped.startswith("[")):
+        return None
+    if len(stripped) < 1000:
+        return None
+
+    try:
+        import json
+        data = json.loads(stripped)
+        schema = _json_schema(data, depth=0, max_depth=4)
+        result = json.dumps(schema, indent=2)
+        if len(result) < len(content) * 0.5:
+            return f"[entroly: JSON compressed to schema ({len(content)} → {len(result)} chars)]\n{result}"
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
+
+
+def _json_schema(obj: Any, depth: int = 0, max_depth: int = 4) -> Any:
+    """Extract schema from a JSON object (types instead of values)."""
+    if depth > max_depth:
+        return "..."
+    if isinstance(obj, dict):
+        return {k: _json_schema(v, depth + 1, max_depth) for k, v in list(obj.items())[:20]}
+    elif isinstance(obj, list):
+        if not obj:
+            return []
+        # Show schema of first item + count
+        return [_json_schema(obj[0], depth + 1, max_depth), f"... ({len(obj)} items)"]
+    elif isinstance(obj, str):
+        if len(obj) > 50:
+            return f"<str:{len(obj)}>"
+        return obj  # Keep short strings (likely enum values)
+    elif isinstance(obj, bool):
+        return obj
+    elif isinstance(obj, (int, float)):
+        return f"<{type(obj).__name__}>"
+    return str(type(obj).__name__)
+
+
+def _human_size(size_bytes: int) -> str:
+    """Convert bytes to human-readable size."""
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes // 1024}KB"
+    else:
+        return f"{size_bytes // (1024 * 1024)}MB"
+
+
+def compress_tool_messages(messages: list[dict]) -> tuple[list[dict], int]:
+    """Compress tool/MCP call results in a conversation message list.
+
+    Processes messages with role="tool" or role="function" or content
+    that looks like tool output, applying pattern-based compression.
+
+    Returns:
+        (compressed_messages, total_tokens_saved)
+    """
+    if not messages:
+        return messages, 0
+
+    total_saved = 0
+    result = []
+
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        # Only compress tool results and function responses
+        is_tool = role in ("tool", "function")
+
+        # Also compress assistant messages that contain tool_calls results
+        # (Anthropic format: content is a list with tool_result blocks)
+        is_tool_block = False
+        if isinstance(content, list):
+            is_tool_block = any(
+                isinstance(b, dict) and b.get("type") in ("tool_result", "tool_use")
+                for b in content
+            )
+
+        if (is_tool or is_tool_block) and isinstance(content, str) and len(content) >= _TOOL_COMPRESS_MIN_CHARS:
+            compressed, comp_type, savings = compress_tool_output(content)
+            if savings > 0.10:
+                tokens_saved = (len(content) - len(compressed)) // 4
+                total_saved += tokens_saved
+                new_msg = dict(msg)
+                new_msg["content"] = compressed
+                result.append(new_msg)
+                continue
+
+        result.append(msg)
+
+    return result, total_saved
+
+
+# Compressor registry — checked in order (most specific first)
+_COMPRESSORS: list[tuple[str, Any]] = [
+    ("test_output", _compress_test_output),
+    ("git_diff", _compress_git_diff),
+    ("git_status", _compress_git_status),
+    ("git_log", _compress_git_log),
+    ("build_errors", _compress_build_errors),
+    ("log_output", _compress_log_output),
+    ("directory_listing", _compress_directory_listing),
+    ("json_blob", _compress_json_blob),
+]

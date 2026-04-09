@@ -18,13 +18,12 @@ from __future__ import annotations
 
 import gc
 import time
-import math
-from typing import Any, Dict, List
+from typing import Any
 
 # ── Benchmark payload — fixed test corpus (never changes) ─────────────
 # These fragments represent a realistic codebase context load.
 # The harness ingests them and then optimizes — result is the efficiency score.
-BENCHMARK_FRAGMENTS: List[Dict[str, Any]] = [
+BENCHMARK_FRAGMENTS: list[dict[str, Any]] = [
     {"content": "def authenticate(token: str) -> bool:\n    if not token:\n        raise ValueError('Empty token')\n    return hmac.compare_digest(token, SECRET)", "source": "auth/service.py"},
     {"content": "class PaymentProcessor:\n    def charge(self, amount: float, currency: str = 'USD') -> dict:\n        return self._gateway.process({'amount': amount, 'currency': currency})", "source": "payments/processor.py"},
     {"content": "SELECT u.id, u.email, o.total FROM users u JOIN orders o ON o.user_id = u.id WHERE u.active = 1 ORDER BY o.created_at DESC LIMIT 100", "source": "db/queries.sql"},
@@ -41,7 +40,7 @@ BENCHMARK_QUERY = "authenticate user and process payment with rate limiting"
 BENCHMARK_BUDGET = 8000  # tokens
 
 
-def run_benchmark(engine: Any, budget_seconds: float = 10.0) -> Dict[str, Any]:
+def run_benchmark(engine: Any, budget_seconds: float = 10.0) -> dict[str, Any]:
     """
     Run the fixed evaluation payload and return the context_efficiency score.
 

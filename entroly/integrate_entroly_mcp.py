@@ -1,7 +1,8 @@
 # Example: Integrate Entroly with MCP
 
-from entroly import load_secrets
 from mcp import MCPServer
+
+from entroly import load_secrets
 
 # Load secrets using Entroly
 env_secrets = load_secrets()

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
 
 _SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", "target", "node_modules", ".tmp"}
 
@@ -132,9 +131,9 @@ _WASM_JS_ROLE_MAP = {
 }
 
 
-def build_repo_map(root: str | Path) -> Dict[str, List[FileMapEntry]]:
+def build_repo_map(root: str | Path) -> dict[str, list[FileMapEntry]]:
     root_path = Path(root).resolve()
-    grouped: Dict[str, List[FileMapEntry]] = {
+    grouped: dict[str, list[FileMapEntry]] = {
         "root": [],
         "python": [],
         "rust-core": [],
@@ -155,7 +154,7 @@ def build_repo_map(root: str | Path) -> Dict[str, List[FileMapEntry]]:
     return grouped
 
 
-def render_repo_map_markdown(grouped: Dict[str, List[FileMapEntry]]) -> str:
+def render_repo_map_markdown(grouped: dict[str, list[FileMapEntry]]) -> str:
     lines = [
         "# Entroly Repo File Map",
         "",

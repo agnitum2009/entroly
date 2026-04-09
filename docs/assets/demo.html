@@ -145,22 +145,49 @@ const L=[
 ];
 const content=document.getElementById('content');
 let timeouts=[];
-function clear(){ timeouts.forEach(clearTimeout); timeouts=[]; content.innerHTML=''; }
+function clear(){
+    timeouts.forEach(clearTimeout);
+    timeouts=[];
+    content.innerHTML='';
+}
 function play() {
-  clear();
-  L.forEach((l,i) => {
-    const div=document.createElement('div');
-    div.className='line';
-    if(l.b) div.style.fontWeight='700';
-    div.style.color=l.c;
-    div.innerHTML=l.t||'\u00a0';
-    content.appendChild(div);
-  });
-  const cur=document.createElement('span');
-  cur.className='cursor show';
-  content.appendChild(cur);
+    clear();
+    const cur=document.createElement('span');
+    cur.className='cursor show';
+    L.forEach((l,i) => {
+        const div=document.createElement('div');
+        div.className='line';
+        if(l.b) div.style.fontWeight='700';
+        div.style.color=l.c;
+        div.innerHTML=l.t||'\u00a0';
+        content.appendChild(div);
+        timeouts.push(setTimeout(() => {
+            div.classList.add('show');
+            content.appendChild(cur);
+            content.scrollTop = content.scrollHeight;
+        }, l.d));
+    });
+}
+function skipToEnd() {
+    clear();
+    const cur=document.createElement('span');
+    cur.className='cursor show';
+    L.forEach((l,i) => {
+        const div=document.createElement('div');
+        div.className='line show';
+        if(l.b) div.style.fontWeight='700';
+        div.style.color=l.c;
+        div.innerHTML=l.t||'\u00a0';
+        content.appendChild(div);
+    });
+    content.appendChild(cur);
+    content.scrollTop = content.scrollHeight;
+}
+function replay() {
+    play();
 }
 play();
+
 </script>
 </body>
 </html>

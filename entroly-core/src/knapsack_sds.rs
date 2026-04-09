@@ -34,12 +34,21 @@ use crate::dedup::hamming_distance;
 use crate::fragment::{ContextFragment, compute_relevance};
 
 /// Resolution level for a selected fragment.
+///
+/// Hierarchical Context Synthesis: four abstraction levels that mirror
+/// how engineers actually hold code in working memory.
+///   Full      → raw code (100% info, 100% tokens)
+///   Skeleton  → signatures + structure (70% info, 20% tokens)
+///   Belief    → vault knowledge graph summary (50% info, 10-15% tokens)
+///   Reference → file path only (15% info, 2% tokens)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Resolution {
     /// Full content — maximum information, maximum tokens
     Full,
     /// Skeleton — signatures + structure, ~20% tokens
     Skeleton,
+    /// Belief — vault-compiled summary with wiki-linked context, ~10-15% tokens
+    Belief,
     /// Reference — file path + function name only, ~2% tokens
     Reference,
 }
@@ -47,14 +56,20 @@ pub enum Resolution {
 /// Configurable information retention factors for each resolution level.
 /// These control the value/cost trade-off in multi-resolution knapsack.
 /// Tunable via tuning_config.json → autotune daemon.
+///
+/// Belief factor (0.50): vault beliefs capture ~50% of a file's information
+/// value at ~10-15% token cost. This is the key ratio for Hierarchical
+/// Context Synthesis — beliefs provide architectural understanding that
+/// makes raw code fragments cheaper to comprehend.
 pub struct InfoFactors {
     pub skeleton: f64,   // default 0.70
+    pub belief: f64,     // default 0.50
     pub reference: f64,  // default 0.15
 }
 
 impl Default for InfoFactors {
     fn default() -> Self {
-        InfoFactors { skeleton: 0.70, reference: 0.15 }
+        InfoFactors { skeleton: 0.70, belief: 0.50, reference: 0.15 }
     }
 }
 
@@ -64,6 +79,7 @@ impl Resolution {
         match self {
             Resolution::Full => 1.0,
             Resolution::Skeleton => factors.skeleton,
+            Resolution::Belief => factors.belief,
             Resolution::Reference => factors.reference,
         }
     }
@@ -72,13 +88,14 @@ impl Resolution {
         match self {
             Resolution::Full => "full",
             Resolution::Skeleton => "skeleton",
+            Resolution::Belief => "belief",
             Resolution::Reference => "reference",
         }
     }
 }
 
 /// A candidate item for the SDS+MRK optimizer.
-/// Each fragment generates 1-3 candidates (one per resolution).
+/// Each fragment generates 1-4 candidates (one per resolution).
 struct Candidate {
     frag_idx: usize,       // Index into the fragments array
     resolution: Resolution,
@@ -302,6 +319,25 @@ pub fn ios_select(
                         resolution: Resolution::Skeleton,
                         token_cost: skel_tc,
                         base_value: skel_value,
+                        simhash: frag.simhash,
+                    });
+                }
+            }
+
+            // Belief resolution — only if vault belief was loaded during ingest.
+            // Beliefs sit between Skeleton (structural) and Reference (path-only):
+            // they capture semantic understanding at ~10-15% token cost.
+            // The IOS greedy selector will pick the resolution with the best
+            // value/cost ratio, so beliefs naturally win when budget is tight
+            // but the file is important enough that a bare reference isn't enough.
+            if let Some(belief_tc) = frag.belief_token_count {
+                let belief_value = relevance * Resolution::Belief.info_factor(info_factors);
+                if belief_tc < frag.token_count && belief_value >= min_candidate_value {
+                    candidates.push(Candidate {
+                        frag_idx: i,
+                        resolution: Resolution::Belief,
+                        token_cost: belief_tc,
+                        base_value: belief_value,
                         simhash: frag.simhash,
                     });
                 }

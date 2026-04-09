@@ -18,11 +18,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from .vault import VaultManager, BeliefArtifact, VerificationArtifact
+from .vault import VaultManager, VerificationArtifact
 from .verification_engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
@@ -35,11 +34,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ChangeSet:
     """A structured representation of a code change."""
-    files_added: List[str] = field(default_factory=list)
-    files_modified: List[str] = field(default_factory=list)
-    files_deleted: List[str] = field(default_factory=list)
-    functions_changed: List[str] = field(default_factory=list)
-    classes_changed: List[str] = field(default_factory=list)
+    files_added: list[str] = field(default_factory=list)
+    files_modified: list[str] = field(default_factory=list)
+    files_deleted: list[str] = field(default_factory=list)
+    functions_changed: list[str] = field(default_factory=list)
+    classes_changed: list[str] = field(default_factory=list)
     lines_added: int = 0
     lines_removed: int = 0
     intent: str = "unknown"  # feature, bugfix, refactor, test, docs, security, performance
@@ -49,10 +48,10 @@ class ChangeSet:
 @dataclass
 class BeliefDiff:
     """How a code change affects existing beliefs."""
-    stale_beliefs: List[str] = field(default_factory=list)    # become stale
-    invalidated_beliefs: List[str] = field(default_factory=list)  # contradicted
-    new_coverage_needed: List[str] = field(default_factory=list)  # new files
-    unchanged_beliefs: List[str] = field(default_factory=list)
+    stale_beliefs: list[str] = field(default_factory=list)    # become stale
+    invalidated_beliefs: list[str] = field(default_factory=list)  # contradicted
+    new_coverage_needed: list[str] = field(default_factory=list)  # new files
+    unchanged_beliefs: list[str] = field(default_factory=list)
     blast_radius: str = "low"  # low, medium, high
 
 
@@ -74,7 +73,7 @@ class PRBrief:
     summary: str
     changeset: ChangeSet
     belief_diff: BeliefDiff
-    findings: List[ReviewFinding] = field(default_factory=list)
+    findings: list[ReviewFinding] = field(default_factory=list)
     risk_level: str = "low"
     action_path: str = ""
     verification_path: str = ""
@@ -205,9 +204,9 @@ _VIOLATIONS = [
 ]
 
 
-def review_diff(diff_text: str) -> List[ReviewFinding]:
+def review_diff(diff_text: str) -> list[ReviewFinding]:
     """Review a diff for common issues."""
-    findings: List[ReviewFinding] = []
+    findings: list[ReviewFinding] = []
 
     # Pattern-based review on added lines
     current_file = ""
@@ -233,9 +232,9 @@ def review_diff(diff_text: str) -> List[ReviewFinding]:
                     ))
 
     # Duplicate detection: same code added to multiple files
-    added_blocks: Dict[str, List[str]] = {}
+    added_blocks: dict[str, list[str]] = {}
     current_file = ""
-    block: List[str] = []
+    block: list[str] = []
     for line in diff_text.splitlines():
         if line.startswith("+++ b/"):
             if block and current_file:
@@ -346,7 +345,7 @@ class ChangePipeline:
         )
         return brief
 
-    def refresh_docs(self, changed_files: List[str]) -> Dict[str, Any]:
+    def refresh_docs(self, changed_files: list[str]) -> dict[str, Any]:
         """Trigger belief refresh for changed files."""
         refreshed = self._vault.mark_beliefs_stale_for_files(changed_files)
         refreshed["status"] = "refreshed"
@@ -389,7 +388,7 @@ class ChangePipeline:
 
         return bd
 
-    def _assess_risk(self, cs: ChangeSet, bd: BeliefDiff, findings: List[ReviewFinding]) -> str:
+    def _assess_risk(self, cs: ChangeSet, bd: BeliefDiff, findings: list[ReviewFinding]) -> str:
         errors = sum(1 for f in findings if f.severity == "error")
         if errors > 0 or cs.intent == "security":
             return "high"

@@ -14,19 +14,17 @@ sequence of steps that the orchestrator executes.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .epistemic_router import EpistemicRouter, EpistemicFlow, RoutingDecision
-from .vault import VaultManager, BeliefArtifact
-from .verification_engine import VerificationEngine
 from .belief_compiler import BeliefCompiler
 from .change_pipeline import ChangePipeline, parse_diff
+from .epistemic_router import EpistemicFlow, EpistemicRouter, RoutingDecision
 from .evolution_logger import EvolutionLogger
+from .vault import VaultManager
+from .verification_engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +34,14 @@ class FlowResult:
     """Result of executing a canonical flow."""
     flow: str
     status: str  # completed, partial, failed
-    steps_completed: List[str] = field(default_factory=list)
-    beliefs_used: List[str] = field(default_factory=list)
-    artifacts_created: List[str] = field(default_factory=list)
+    steps_completed: list[str] = field(default_factory=list)
+    beliefs_used: list[str] = field(default_factory=list)
+    artifacts_created: list[str] = field(default_factory=list)
     answer: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     duration_ms: float = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "flow": self.flow,
             "status": self.status,
@@ -72,7 +70,7 @@ class FlowOrchestrator:
         verifier: VerificationEngine,
         change_pipe: ChangePipeline,
         evolution: EvolutionLogger,
-        source_dir: Optional[str] = None,
+        source_dir: str | None = None,
     ):
         self._vault = vault
         self._router = router
@@ -85,7 +83,7 @@ class FlowOrchestrator:
     def execute(
         self,
         query: str,
-        decision: Optional[RoutingDecision] = None,
+        decision: RoutingDecision | None = None,
         diff_text: str = "",
         is_event: bool = False,
         event_type: str = "",
@@ -184,7 +182,7 @@ class FlowOrchestrator:
         # Step 3: Assemble answer with verification status
         result.steps_completed.append("answer_assembly")
         answer_parts = [f"## Verified Answer (from {len(beliefs)} belief(s))\n"]
-        for b, vr in zip(beliefs, verification_results):
+        for b, vr in zip(beliefs, verification_results, strict=False):
             entity = b.get("entity", "unknown")
             conf = b.get("confidence", 0)
             body = b.get("body", "")[:500]
@@ -413,7 +411,7 @@ class FlowOrchestrator:
 
     # â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    def _find_relevant_beliefs(self, query: str) -> List[Dict[str, Any]]:
+    def _find_relevant_beliefs(self, query: str) -> list[dict[str, Any]]:
         """Find beliefs relevant to a query by keyword matching."""
         import re as _re
         terms = set(

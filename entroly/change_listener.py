@@ -19,15 +19,14 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .belief_compiler import BeliefCompiler
 from .change_pipeline import ChangePipeline
-from .verification_engine import VerificationEngine
 from .vault import VaultManager
+from .verification_engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +41,16 @@ _SKIP_DIRS = {
 class WorkspaceSyncResult:
     status: str
     project_dir: str
-    changed_files: List[str] = field(default_factory=list)
-    deleted_files: List[str] = field(default_factory=list)
+    changed_files: list[str] = field(default_factory=list)
+    deleted_files: list[str] = field(default_factory=list)
     beliefs_written: int = 0
-    verification_summary: Dict[str, Any] = field(default_factory=dict)
+    verification_summary: dict[str, Any] = field(default_factory=dict)
     action_path: str = ""
-    refresh_result: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
+    refresh_result: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
     scanned_files: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "project_dir": self.project_dir,
@@ -76,7 +75,7 @@ class WorkspaceChangeListener:
         verifier: VerificationEngine,
         change_pipe: ChangePipeline,
         project_dir: str,
-        state_path: Optional[str] = None,
+        state_path: str | None = None,
     ):
         self._vault = vault
         self._compiler = compiler
@@ -86,7 +85,7 @@ class WorkspaceChangeListener:
         state_root = self._vault.config.path.parent
         state_root.mkdir(parents=True, exist_ok=True)
         self._state_path = Path(state_path).resolve() if state_path else state_root / "change_listener_state.json"
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop = threading.Event()
 
     def scan_once(self, force: bool = False, max_files: int = 100) -> WorkspaceSyncResult:
@@ -149,7 +148,7 @@ class WorkspaceChangeListener:
         )
         return result
 
-    def start(self, interval_s: int = 120, max_files: int = 100, force_initial: bool = False) -> Dict[str, Any]:
+    def start(self, interval_s: int = 120, max_files: int = 100, force_initial: bool = False) -> dict[str, Any]:
         if self._thread and self._thread.is_alive():
             return {
                 "status": "already_running",
@@ -181,12 +180,12 @@ class WorkspaceChangeListener:
             "state_path": str(self._state_path),
         }
 
-    def stop(self) -> Dict[str, Any]:
+    def stop(self) -> dict[str, Any]:
         self._stop.set()
         return {"status": "stopped", "project_dir": str(self._project_dir)}
 
-    def _snapshot(self) -> Dict[str, float]:
-        snapshot: Dict[str, float] = {}
+    def _snapshot(self) -> dict[str, float]:
+        snapshot: dict[str, float] = {}
         for path in self._discover_source_files():
             try:
                 rel = path.relative_to(self._project_dir).as_posix()
@@ -195,8 +194,8 @@ class WorkspaceChangeListener:
                 continue
         return snapshot
 
-    def _discover_source_files(self) -> List[Path]:
-        files: List[Path] = []
+    def _discover_source_files(self) -> list[Path]:
+        files: list[Path] = []
         for path in self._project_dir.rglob("*"):
             if not path.is_file():
                 continue
@@ -208,7 +207,7 @@ class WorkspaceChangeListener:
         files.sort()
         return files
 
-    def _load_state(self) -> Dict[str, float]:
+    def _load_state(self) -> dict[str, float]:
         if not self._state_path.exists():
             return {}
         try:
@@ -216,7 +215,7 @@ class WorkspaceChangeListener:
         except Exception:
             return {}
 
-    def _save_state(self, state: Dict[str, float]) -> None:
+    def _save_state(self, state: dict[str, float]) -> None:
         self._state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
     def _render_summary(self, result: WorkspaceSyncResult) -> str:
