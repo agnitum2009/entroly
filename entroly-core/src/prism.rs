@@ -74,7 +74,7 @@ impl<const N: usize> SymMatrixN<N> {
     pub fn jacobi_eigendecomposition(&self) -> (SymMatrixN<N>, Vec<f64>) {
         let mut a = self.clone();
         let mut q = Self::identity();
-        let max_iters = 100; // More headroom for 5D convergence
+        let max_iters = 100; // More allowance for 5D convergence
         let eps = 1e-9;
 
         for _ in 0..max_iters {
