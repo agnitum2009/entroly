@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  PIP_RETRIES: 10
+  PIP_TIMEOUT: 120
+
 jobs:
   lint:
     name: Python Lint (ruff)
