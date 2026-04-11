@@ -520,7 +520,7 @@ function renderHero(d){
     <div class="hero-card hc-files"><div class="hero-icon">📁</div>
       <div class="hero-val hv-blue">${frags}</div>
       <div class="hero-label">Files Indexed</div>
-      <div class="hero-sub">${fmt(ss.total_tokens_ingested||ss.total_token_count||0)} tokens scanned</div></div>
+      <div class="hero-sub">${fmt(ss.total_tokens_tracked||ss.total_tokens_ingested||ss.total_token_count||0)} tokens scanned</div></div>
     <div class="hero-card hc-health"><div class="hero-icon">🏥</div>
       <div class="hero-val" style="color:${gc}">${grade}</div>
       <div class="hero-label">Code Health</div>
@@ -538,7 +538,7 @@ function renderHero(d){
 function renderBA(d){
   const s=d.stats||{},ss=s.session||{},sv=s.savings||{};
   const ex=d.explain||{};
-  const totalTokens=ss.total_token_count||ss.total_tokens_ingested||0;
+  const totalTokens=ss.total_tokens_tracked||ss.total_token_count||ss.total_tokens_ingested||0;
   const selected=ex.included||[];
   const excluded=ex.excluded||[];
   const selTokens=selected.reduce((a,f)=>a+(f.tokens||f.token_count||0),0);
@@ -745,9 +745,25 @@ function renderValueTrends(d){
     '</div></div>';
 }
 
+function renderCogops(d){
+  const c=d.cogops,el=document.getElementById('cogops'),b=document.getElementById('cogb');
+  if(!el)return;
+  if(!c){el.innerHTML='<div class="empty">Epistemic engine not initialized — vault missing or unreadable</div>';return;}
+  const tb=c.total_beliefs||0,ver=c.verified||0,st=c.stale||0,db=c.doc_beliefs||0;
+  const conf=c.avg_confidence||0,fresh=c.freshness_pct||0,ents=c.entity_count||0;
+  if(b){b.textContent=(c.engine||'cogops')+' · '+tb+' beliefs';b.className='badge '+(tb>0?'b-violet':'b-blue');}
+  if(tb===0){el.innerHTML='<div class="empty">No beliefs yet — run <code>compile_beliefs</code> to seed the vault</div>';return;}
+  el.innerHTML=`<div class="cache-kpis">
+    <div class="cache-kpi"><div class="cache-kpi-label">Total Beliefs</div><div class="cache-kpi-val hv-blue">${fmt(tb)}</div><div class="cache-kpi-sub">${ents} distinct entities · ${db} doc-linked</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Avg Confidence</div><div class="cache-kpi-val hv-green">${(conf*100).toFixed(1)}%</div><div class="cache-kpi-sub">${ver} verified · ${tb-ver-st} inferred</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Freshness</div><div class="cache-kpi-val hv-amber">${fresh.toFixed(0)}%</div><div class="cache-kpi-sub">${st} stale beliefs flagged</div></div>
+    <div class="cache-kpi"><div class="cache-kpi-label">Engine</div><div class="cache-kpi-val hv-violet">${c.engine||'—'}</div><div class="cache-kpi-sub">5-layer epistemic topology</div></div>
+  </div>`;
+}
+
 async function refresh(){
   try{const r=await fetch('/api/metrics');const d=await r.json();
-    renderHero(d);renderValueTrends(d);renderBA(d);renderPrism(d);renderHealth(d);renderCache(d);renderSecAndKnapsack(d);renderRequests(d);
+    renderHero(d);renderValueTrends(d);renderBA(d);renderPrism(d);renderHealth(d);renderCache(d);renderCogops(d);renderSecAndKnapsack(d);renderRequests(d);
   }catch(e){console.error('Refresh:',e);}
 }
 refresh();setInterval(refresh,3000);
