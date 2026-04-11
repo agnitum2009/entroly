@@ -7,8 +7,8 @@
 <h3 align="center">Stop your AI from hallucinating. Give it your entire codebase.</h3>
 
 <p align="center">
-  <b>The Context Engineering Engine for AI Coding Agents</b><br/>
-  <i>Your AI sees 5% of your codebase and hallucinates the rest. Entroly fixes this — 50-<b>80%</b> fewer tokens, 100% code visibility.</i>
+  <b>The Token-Saving MCP Server & Context Compression Engine</b><br/>
+  <i>Stop paying for useless LLM tokens. Entroly is a zero-config Context Engine (with native HTTP proxy support) that compresses codebase context, reducing Claude, Cursor, and OpenAI API costs by <b>80%</b> without losing visibility.</i>
 </p>
 
 <p align="center">
@@ -179,6 +179,20 @@ docker run --rm -p 9377:9377 -p 9378:9378 -v .:/workspace:ro ghcr.io/juyterman10
 - **Battle-tested** — 436 tests, crash recovery, connection auto-reconnect, cross-platform file locking.
 - **Built-in security** — 55 SAST rules catch hardcoded secrets, SQL injection, command injection across 8 CWE categories.
 - **Codebase health grades** — Clone detection, dead code finder, god file detection. Get an A-F grade.
+
+---
+
+## Beyond Basic Token Saving Proxies
+
+When developers search for **"token saving proxy"** or **"context compression"**, Entroly offers distinct advantages over standard alternatives:
+
+| Feature | Entroly | Basic Proxies |
+|---|---|---|
+| **Setup** | Zero-config (`entroly go`) | Requires YAML/embedding setup |
+| **Codebase Intelligence** | Deep (dead code, god files) | Proxy transport only |
+| **Security** | 55 SAST rules (catches hardcoded secrets) | None builtin |
+| **Savings Strategy** | Information-theoretic Knapsack (retains 100% visibility) | Standard reduction techniques |
+| **Primary Use Case** | Context compression for AI agents | Basic token reduction |
 
 ---
 

@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "entroly"
 version = "0.6.4"
 
-description = "Information-theoretic context optimization for AI coding agents. Knapsack-optimal token budgeting, Shannon entropy scoring, SimHash dedup, predictive pre-fetch. MCP server."
+description = "The token saving proxy and context compression engine for AI coding agents. Reduce LLM API costs by 80% while providing full codebase context to Cursor, Claude Code, and Copilot."
 readme = "README.md"
 license = { text = "MIT" }
 logo = { file = "docs/assets/logo.png", content-type = "image/png" }
@@ -15,9 +15,9 @@ authors = [
     { name = "Ebbiforge", email = "fastrunner10090@gmail.com" },
 ]
 keywords = [
-    "mcp", "context-optimization", "token-cost", "agentic-ai",
-    "knapsack", "entropy", "deduplication", "checkpoint",
-    "cursor", "claude", "copilot", "llm",
+    "token-saving", "context-compression", "reduce-llm-costs", "llm-proxy",
+    "mcp", "agentic-ai", "cursor", "claude-code", "copilot", "llm",
+    "knapsack", "entropy", "context-optimization", "token-reduction"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
