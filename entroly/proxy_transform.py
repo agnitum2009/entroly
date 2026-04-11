@@ -1336,3 +1336,265 @@ _COMPRESSORS: list[tuple[str, Any]] = [
     ("directory_listing", _compress_directory_listing),
     ("json_blob", _compress_json_blob),
 ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Entropic Conversation Pruning (ECP)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_ECP_FULL_TURNS = 2
+_ECP_SKELETON_TURNS = 5
+_ECP_MIN_COMPRESS_LEN = 300
+_ECP_MIN_MESSAGES = 8
+
+
+def entropic_conversation_prune(
+    messages: list[dict],
+    injected_context: str = "",
+    provider: str = "openai",
+) -> tuple[list[dict], dict]:
+    """Compress conversation history using temporal decay + cross-deduplication."""
+    if not messages or len(messages) < _ECP_MIN_MESSAGES:
+        return messages, {"pruned": False, "reason": "too_short"}
+
+    # Find turn boundaries
+    turn_pairs: list[tuple[int, int]] = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        role = msg.get("role", "")
+        if role == "user":
+            # Look for following assistant message
+            if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
+                turn_pairs.append((i, i + 1))
+                i += 2
+                continue
+        i += 1
+
+    if len(turn_pairs) < _ECP_FULL_TURNS + 1:
+        return messages, {"pruned": False, "reason": "too_few_turns"}
+
+    # Build context trigrams for cross-deduplication
+    context_trigrams: set[str] = set()
+    if injected_context:
+        ctx_words = injected_context.lower().split()
+        for j in range(len(ctx_words) - 2):
+            context_trigrams.add(" ".join(ctx_words[j:j + 3]))
+
+    # Apply temporal decay
+    pruned = list(messages)
+    total_original_chars = 0
+    total_pruned_chars = 0
+    messages_compressed = 0
+    num_turns = len(turn_pairs)
+
+    for turn_idx, (user_i, asst_i) in enumerate(turn_pairs):
+        age = num_turns - 1 - turn_idx
+
+        if age < _ECP_FULL_TURNS:
+            continue
+
+        # Process both user and assistant messages in this turn
+        for msg_idx in (user_i, asst_i):
+            content = _ecp_get_content(pruned[msg_idx])
+            if not content or len(content) < _ECP_MIN_COMPRESS_LEN:
+                continue
+
+            total_original_chars += len(content)
+
+            if age < _ECP_SKELETON_TURNS:
+                compressed = _ecp_skeletonize(content, context_trigrams)
+            else:
+                compressed = _ecp_summarize(content, context_trigrams)
+
+            if len(compressed) < len(content) * 0.90:
+                total_pruned_chars += len(compressed)
+                pruned[msg_idx] = _ecp_set_content(
+                    pruned[msg_idx], compressed, provider
+                )
+                messages_compressed += 1
+            else:
+                total_pruned_chars += len(content)
+
+    savings = 1.0 - (total_pruned_chars / max(total_original_chars, 1))
+
+    return pruned, {
+        "pruned": messages_compressed > 0,
+        "messages_compressed": messages_compressed,
+        "original_chars": total_original_chars,
+        "pruned_chars": total_pruned_chars,
+        "savings_ratio": round(savings, 4),
+        "turns_total": num_turns,
+    }
+
+
+def _ecp_get_content(msg: dict) -> str:
+    """Extract text content from a message."""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Anthropic/multimodal: content is a list of blocks
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts)
+    return ""
+
+
+def _ecp_set_content(msg: dict, new_content: str, provider: str) -> dict:
+    """Return a copy of the message with compressed content."""
+    result = dict(msg)
+    original = msg.get("content", "")
+
+    if isinstance(original, str):
+        result["content"] = new_content
+    elif isinstance(original, list) and provider == "anthropic":
+        # Anthropic: Replace text blocks, preserve non-text blocks (images, etc.)
+        new_blocks = []
+        text_replaced = False
+        for block in original:
+            if isinstance(block, dict) and block.get("type") == "text" and not text_replaced:
+                new_blocks.append({"type": "text", "text": new_content})
+                text_replaced = True
+            elif isinstance(block, dict) and block.get("type") != "text":
+                new_blocks.append(block)  # Preserve images, etc.
+        if not text_replaced:
+            new_blocks.append({"type": "text", "text": new_content})
+        result["content"] = new_blocks
+    else:
+        result["content"] = new_content
+
+    return result
+
+
+def _ecp_skeletonize(content: str, context_trigrams: set[str]) -> str:
+    """Medium compression: keep code, decisions, and structure."""
+    lines = content.split("\n")
+    result = []
+    in_code_block = False
+    code_line_count = 0
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Always keep code block delimiters and code
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            result.append(line)
+            code_line_count = 0
+            continue
+
+        if in_code_block:
+            code_line_count += 1
+            if code_line_count <= 30:  # Cap code blocks at 30 lines
+                result.append(line)
+            elif code_line_count == 31:
+                result.append("  // ... (truncated)")
+            continue
+
+        # Keep structural markers
+        if stripped.startswith("#") or stripped.startswith("- ") or stripped.startswith("* "):
+            # Cross-dedup: skip if content is already in injected context
+            if not _ecp_is_redundant(stripped, context_trigrams):
+                result.append(line)
+            continue
+
+        # Keep lines with key decision indicators
+        key_markers = ("error", "fix", "change", "add", "remov", "creat",
+                       "updat", "modif", "delet", "implement", "→", "->",
+                       "because", "since", "todo", "note:", "important")
+        if any(m in stripped.lower() for m in key_markers):
+            if not _ecp_is_redundant(stripped, context_trigrams):
+                result.append(line)
+            continue
+
+        # Keep short lines (likely structure, not prose)
+        if len(stripped) < 60 and stripped:
+            result.append(line)
+            continue
+
+        # Skip verbose prose
+
+    if not result:
+        # Fallback: keep first and last 5 lines
+        result = lines[:5] + ["[... compressed ...]"] + lines[-5:]
+
+    return "\n".join(result)
+
+
+def _ecp_summarize(content: str, context_trigrams: set[str]) -> str:
+    """Aggressive compression for old messages."""
+    # Split into sentences
+    sentences = _re.split(r'(?<=[.!?\n])\s+', content)
+    if len(sentences) <= 3:
+        return content
+
+    # Score sentences by information density
+    word_freq: dict[str, int] = {}
+    for sent in sentences:
+        for word in sent.lower().split():
+            word_freq[word] = word_freq.get(word, 0) + 1
+
+    total_words = max(sum(word_freq.values()), 1)
+
+    scored: list[tuple[float, int, str]] = []
+    for idx, sent in enumerate(sentences):
+        if not sent.strip():
+            continue
+
+        # IDF scoring
+        words = sent.lower().split()
+        if not words:
+            continue
+        info_score = sum(
+            math.log(total_words / max(word_freq.get(w, 1), 1))
+            for w in words
+        ) / max(len(words), 1)
+
+        if "```" in sent or "`" in sent or "(" in sent:
+            info_score *= 1.5
+
+        if _ecp_is_redundant(sent, context_trigrams):
+            info_score *= 0.1
+
+        position_bonus = 0.1 * (idx / max(len(sentences), 1))
+        info_score += position_bonus
+
+        scored.append((info_score, idx, sent))
+
+    scored.sort(reverse=True)
+    target_count = max(3, len(scored) // 5)
+
+    selected = sorted(scored[:target_count], key=lambda x: x[1])
+
+    # Build summary
+    summary_parts = ["[earlier in conversation]"]
+    for _, _, sent in selected:
+        summary_parts.append(sent.strip())
+
+    return "\n".join(summary_parts)
+
+
+def _ecp_is_redundant(text: str, context_trigrams: set[str]) -> bool:
+    """Check if text overlaps substantially with injected context."""
+    if not context_trigrams or len(text) < 30:
+        return False
+
+    words = text.lower().split()
+    if len(words) < 3:
+        return False
+
+    text_trigrams = set()
+    for i in range(len(words) - 2):
+        text_trigrams.add(" ".join(words[i:i + 3]))
+
+    if not text_trigrams:
+        return False
+
+    overlap = len(text_trigrams & context_trigrams)
+    coverage = overlap / len(text_trigrams)
+    return coverage > 0.60  # >60% overlap = redundant

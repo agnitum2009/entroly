@@ -761,19 +761,12 @@ class PromptCompilerProxy:
         headers = {k: v for k, v in request.headers.items()}
         provider = detect_provider(path, headers, body)
 
-        # ── Tool Output Compression ──
-        # Always-on: compress tool/MCP call results (test output, git diffs,
-        # build errors, log output, directory listings, JSON blobs).
-        # Works transparently at the proxy layer — zero user setup.
         if "messages" in body:
             from .proxy_transform import compress_tool_messages
             body["messages"], tool_tokens_saved = compress_tool_messages(body["messages"])
             if tool_tokens_saved > 0:
                 logger.info(f"Tool output compression: {tool_tokens_saved} tokens saved")
 
-        # ── Progressive conversation compression ──
-        # Surgically compress tool calls/results and thinking blocks when
-        # context utilization is high, before the optimization pipeline runs.
         if "messages" in body and self.config.enable_conversation_compression:
             body["messages"] = compress_conversation_messages(
                 body["messages"],
@@ -875,6 +868,24 @@ class PromptCompilerProxy:
                         body = inject_context_anthropic(body, context_text)
                     else:
                         body = inject_context_openai(body, context_text)
+
+                    # Entropic Conversation Pruning
+                    if provider != "gemini":
+                        try:
+                            from .proxy_transform import entropic_conversation_prune
+                            ecp_messages = body.get("messages", [])
+                            pruned_msgs, ecp_stats = entropic_conversation_prune(
+                                ecp_messages, context_text, provider
+                            )
+                            if ecp_stats.get("pruned"):
+                                body["messages"] = pruned_msgs
+                                logger.debug(
+                                    "ECP: %d messages compressed, %.1f%% savings",
+                                    ecp_stats["messages_compressed"],
+                                    ecp_stats["savings_ratio"] * 100,
+                                )
+                        except Exception:
+                            pass  # Never block for conversation pruning
 
                     # EGTC v2: apply Fisher-derived optimal temperature
                     if self.config.enable_temperature_calibration and optimal_tau is not None:
@@ -1037,7 +1048,18 @@ class PromptCompilerProxy:
         else:
             token_budget = compute_token_budget(model, self.config)
 
-        # ── Hierarchical Compression path (ECC) ──
+        # Rate-Distortion self-correction: shift IOS toward full-resolution
+        # fragments when quality declines (budget stays unchanged).
+        if self._enable_passive_feedback:
+            trend = self._feedback_tracker.quality_trend()
+            if trend == "declining" and hasattr(self.engine, '_rust'):
+                try:
+                    self.engine._rust.update_belief_utilization(0.1, 0.8)
+                    logger.debug(
+                        "Quality declining: R-D rebalance (budget=%d)", token_budget
+                    )
+                except Exception:
+                    pass
         # Try 3-level hierarchical compression first if enabled.
         # Falls back to flat optimize_context if hierarchical_compress
         # is not available (e.g., older Rust engine version).
