@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/juyterman1000/entroly/main/docs/assets/logo.png" width="180" alt="Entroly — Context Engineering Engine">
 </p>
 
-<h1 align="center">Entroly</h1>
+<h1 align="center">Entroly Daemon</h1>
 
 <h3 align="center">A self-evolving daemon that "dreams" about your codebase to cure AI hallucination.</h3>
 
