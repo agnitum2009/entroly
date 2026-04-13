@@ -4,14 +4,14 @@
 
 <h1 align="center">Entroly Daemon</h1>
 
-<h3 align="center">Give your AI a 2M-token brain. Pay 90% less. Watch the daemon dream up new skills.</h3>
+<h3 align="center">Your AI is blind. Fix it in 30 seconds — then watch it teach itself.</h3>
 
 <p align="center">
-  <i>Entroly is the self-evolving context engine that lets Claude, Cursor, and Copilot see your <b>entire codebase</b> — not the top-5 files — while cutting token bills <b>70–95%</b>. It's the first runtime that <b>evolves its own tools at $0 token cost</b>, dreaming up new skills while you sleep.</i>
+  <i>Claude, Cursor, Copilot, Codex, and MiniMax only see 5% of your codebase. Entroly gives them a <b>2M-token brain for 90% less</b> — then its daemon <b>dreams up new skills while you sleep, at $0 token cost</b>. The first AI runtime whose learning is provably token-negative.</i>
 </p>
 
 <p align="center">
-  <code>npm install entroly-wasm && npx entroly-wasm</code>
+  <code>npm install entroly-wasm && npx entroly-wasm</code>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="https://juyterman1000.github.io/entroly/"><b>Live demo →</b></a>
 </p>
 
 <p align="center">
@@ -80,7 +80,7 @@ npm install entroly-wasm && npx entroly-wasm
 pip install entroly && entroly go
 ```
 
-That's it. It detects your IDE, wires itself into Claude/Cursor/Copilot, and starts compressing. **Both runtimes have full parity** — budget invariant, agentskills.io export, the three chat gateways, and a shared on-disk vault so skills promoted by one runtime are visible to the other.
+That's it. It detects your IDE, wires itself into Claude/Cursor/Copilot/Codex/MiniMax, and starts compressing. **Both runtimes have full parity** — budget invariant, agentskills.io export, the three chat gateways, and a shared on-disk vault so skills promoted by one runtime are visible to the other.
 
 **Node:**
 ```js
@@ -147,7 +147,7 @@ Every exported skill carries `origin.token_cost: 0.0` — the zero-token provena
 
 ## Works with your stack
 
-Claude Code • Cursor • Copilot • Windsurf • Cody • OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
+Claude Code • Cursor • Copilot • Codex CLI • MiniMax • Windsurf • Cody • OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
 
 ---
 
