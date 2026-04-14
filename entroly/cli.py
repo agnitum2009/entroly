@@ -39,7 +39,7 @@ from pathlib import Path
 try:
     from entroly import __version__
 except ImportError:
-    __version__ = "0.8.1"
+    __version__ = "0.8.2"
 
 # ── Force UTF-8 output on Windows ──
 # Windows terminals default to cp1252 which can't encode ✓/✗/─/⚡.
@@ -362,11 +362,13 @@ def _write_config(tool: dict, dry_run: bool = False) -> str:
 
     # Read existing config if it exists
     existing = {}
+    parse_failed = False
     if os.path.exists(config_path):
         try:
             with open(config_path) as f:
                 existing = json.load(f)
         except (json.JSONDecodeError, OSError):
+            parse_failed = True
             existing = {}
 
     # Merge entroly config into existing
@@ -379,6 +381,17 @@ def _write_config(tool: dict, dry_run: bool = False) -> str:
 
     # Ensure directory exists
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
+
+    # Backup existing file before overwrite (skip if parse failed — preserve bytes).
+    if os.path.exists(config_path):
+        backup = config_path + ".entroly-backup"
+        try:
+            import shutil
+            shutil.copy2(config_path, backup)
+        except OSError:
+            pass
+        if parse_failed:
+            print(f"  {C.YELLOW if hasattr(C,'YELLOW') else ''}! Existing config at {config_path} was unparseable; original kept at {backup}{C.RESET}")
 
     with open(config_path, "w") as f:
         json.dump(existing, f, indent=2)

@@ -84,6 +84,12 @@ function cmdHealth() {
     persistIndex(engine, indexPath);
   }
 
+  // Don't declare a grade on an empty scan — guards against false 'A' on blank dirs.
+  const n = engine.fragment_count();
+  if (n < 5) {
+    console.error(`${C.YELLOW || ''}! Only ${n} fragment${n===1?'':'s'} indexed — scan something with real code (cd into your repo, then retry).${C.RESET || ''}`);
+    process.exit(2);
+  }
   const health = engine.analyze_health();
   console.log(typeof health === 'string' ? health : JSON.stringify(health, null, 2));
 }
@@ -119,13 +125,21 @@ function cmdInit() {
     const configDir = fs.existsSync(cursorDir) ? cursorDir : path.join(os.homedir(), '.cursor');
     const configPath = path.join(configDir, 'mcp.json');
 
-    // Merge with existing config
+    // Merge with existing config; backup before overwrite so we never lose user data.
     let existing = {};
-    try { existing = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    let parseFailed = false;
+    if (fs.existsSync(configPath)) {
+      try { existing = JSON.parse(fs.readFileSync(configPath, 'utf-8')); }
+      catch { parseFailed = true; }
+      try { fs.copyFileSync(configPath, configPath + '.entroly-backup'); } catch {}
+    }
     existing.mcpServers = { ...existing.mcpServers, ...mcpConfig.mcpServers };
 
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(existing, null, 2));
+    if (parseFailed) {
+      console.log(`${C.YELLOW || ''}! Existing config was unparseable; original kept at ${configPath}.entroly-backup${C.RESET}`);
+    }
     console.log(`${C.GREEN}✓${C.RESET} Written MCP config to ${C.CYAN}${configPath}${C.RESET}`);
   } else if (fs.existsSync(vscodeDir)) {
     console.log(`${C.GREEN}✓${C.RESET} Detected: ${C.BOLD}VS Code${C.RESET}`);

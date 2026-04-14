@@ -60,6 +60,15 @@ _MODEL_COSTS_PER_1K = {
 
 _DEFAULT_COST_PER_1K = 0.003  # Conservative default
 
+# Aliases so old/new Anthropic names map to the same rate as the JS runtime.
+_MODEL_ALIASES = {
+    "claude-3-opus": "claude-opus-4",
+    "claude-3-sonnet": "claude-sonnet-4",
+    "claude-3-haiku": "claude-haiku-4",
+    "claude-3.5-sonnet": "claude-3-5-sonnet",
+    "claude-3.5-haiku": "claude-3-5-haiku",
+}
+
 # ── Evolution Budget Guardrail ──────────────────────────────────────────
 # The evolution daemon may only spend τ% of lifetime savings on LLM synthesis.
 # Budget(t) = τ · S(t) − C_spent(t)  →  guaranteed token-negative.
@@ -67,14 +76,28 @@ EVOLUTION_TAX_RATE = 0.05  # 5% of lifetime savings
 
 
 def estimate_cost(tokens_saved: int, model: str = "") -> float:
-    """Estimate USD saved for a given number of tokens and model."""
+    """Estimate USD saved for a given number of tokens and model.
+
+    Longest-prefix match to avoid 'gpt-4o' eating 'gpt-4o-mini'. Aliases let
+    both old ('claude-3-opus') and new ('claude-opus-4') naming hit the same
+    rate. Unknown models log a warning so the budget invariant stays honest.
+    """
     cost = _DEFAULT_COST_PER_1K
+    matched = False
     if model:
-        model_lower = model.lower()
-        for prefix, c in _MODEL_COSTS_PER_1K.items():
-            if model_lower.startswith(prefix):
-                cost = c
+        m = model.lower()
+        for alias, canonical in _MODEL_ALIASES.items():
+            if m.startswith(alias):
+                m = canonical + m[len(alias):]
                 break
+        # Longest prefix wins.
+        for prefix in sorted(_MODEL_COSTS_PER_1K.keys(), key=len, reverse=True):
+            if m.startswith(prefix):
+                cost = _MODEL_COSTS_PER_1K[prefix]
+                matched = True
+                break
+        if not matched:
+            logger.warning("unknown model %r; falling back to default $%s/1K", model, _DEFAULT_COST_PER_1K)
     return (tokens_saved / 1000.0) * cost
 
 

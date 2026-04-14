@@ -19,19 +19,59 @@ const os = require('os');
 const EVOLUTION_TAX_RATE = 0.05;
 const FILE_NAME = 'value_tracker.json';
 
-// Rough parity with estimate_cost() in Python — $/1M tokens by model family.
+// Per-model $/1M tokens — kept in sync with entroly/value_tracker.py (×1000).
 const COST_PER_M = {
   default: 3.0,
-  'claude-3-opus': 15.0,
-  'claude-3.5-sonnet': 3.0,
-  'claude-3-haiku': 0.25,
-  'gpt-4o': 5.0,
+  // OpenAI
+  'gpt-4o': 2.5,
   'gpt-4o-mini': 0.15,
+  'gpt-4-turbo': 10.0,
+  'gpt-4': 30.0,
+  'gpt-3.5-turbo': 0.5,
+  'o1': 15.0,
+  'o1-mini': 3.0,
+  'o3': 10.0,
+  'o3-mini': 1.1,
+  'o4-mini': 1.1,
+  // Anthropic
+  'claude-opus-4': 15.0,
+  'claude-sonnet-4': 3.0,
+  'claude-haiku-4': 0.8,
+  'claude-3-5-sonnet': 3.0,
+  'claude-3-5-haiku': 0.8,
+  // Google
+  'gemini-2.5-pro': 1.25,
+  'gemini-2.5-flash': 0.075,
+  'gemini-1.5-pro': 1.25,
+  'gemini-1.5-flash': 0.075,
+};
+
+// Old→new name aliases so 'claude-3-opus' hits the same rate as Python.
+const MODEL_ALIASES = {
+  'claude-3-opus': 'claude-opus-4',
+  'claude-3-sonnet': 'claude-sonnet-4',
+  'claude-3-haiku': 'claude-haiku-4',
+  'claude-3.5-sonnet': 'claude-3-5-sonnet',
+  'claude-3.5-haiku': 'claude-3-5-haiku',
 };
 
 function estimateCost(tokens, model = '') {
-  const key = Object.keys(COST_PER_M).find(k => model && model.includes(k)) || 'default';
-  return (tokens / 1_000_000) * COST_PER_M[key];
+  let m = (model || '').toLowerCase();
+  for (const [alias, canonical] of Object.entries(MODEL_ALIASES)) {
+    if (m.startsWith(alias)) { m = canonical + m.slice(alias.length); break; }
+  }
+  // Longest-prefix match — prevents 'gpt-4o' eating 'gpt-4o-mini'.
+  const keys = Object.keys(COST_PER_M).filter(k => k !== 'default').sort((a, b) => b.length - a.length);
+  const key = (m && keys.find(k => m.startsWith(k)));
+  if (!key && model) {
+    // One-time warning per unknown model — stderr, doesn't pollute stdout.
+    if (!estimateCost._warned) estimateCost._warned = new Set();
+    if (!estimateCost._warned.has(model)) {
+      estimateCost._warned.add(model);
+      try { console.warn(`[entroly] unknown model '${model}'; using default $${COST_PER_M.default}/M`); } catch (_) {}
+    }
+  }
+  return (tokens / 1_000_000) * COST_PER_M[key || 'default'];
 }
 
 function atomicWrite(filePath, content) {
