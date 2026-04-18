@@ -79,9 +79,8 @@ Daemon'unuz rüya görür → daha iyi bir strateji keşfeder → anonim paylaş
 Laptopunuzu açarsınız → AI'nız zaten hepsini emmiş
 ```
 
-Bu teorik değil. Üretimde çalışıyor. Şu anda.
 
-**Kod MIT. Hendek ağdır:**
+**Ağ etkisi:**
 - Her yeni kullanıcı herkesin AI'ını iyileştirir — o kurulu tabanı forklayamazsınız
 - Altyapı maliyeti: **$0**. GitHub'da çalışır. Sunucu yok. GPU yok. Bulut yok
 

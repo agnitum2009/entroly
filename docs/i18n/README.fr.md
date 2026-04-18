@@ -79,9 +79,8 @@ Votre daemon rêve → découvre une meilleure stratégie → la partage (anonym
 Vous ouvrez votre laptop → votre IA a déjà tout absorbé
 ```
 
-Ce n'est pas théorique. C'est en production. Maintenant.
 
-**Le code est MIT. Le fossé, c'est le réseau :**
+**Effet de réseau :**
 - Chaque nouvel utilisateur améliore l'IA de tous — cette base installée ne peut pas être forkée
 - Coût d'infrastructure : **0$**. Tourne sur GitHub. Pas de serveurs. Pas de GPUs. Pas de cloud
 

@@ -27,7 +27,7 @@ Mathematical grounding:
 
 Usage:
     from entroly.archetype_optimizer import ArchetypeOptimizer
-    
+
     optimizer = ArchetypeOptimizer(data_dir=".entroly")
     archetype_id = optimizer.detect_and_load()
     weights = optimizer.current_weights()
@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -129,7 +130,7 @@ class ArchetypeInfo:
 
 def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
     """Scan a codebase directory and collect structural statistics.
-    
+
     Fast scan: reads file extensions and first 100 lines of each file.
     Skips hidden dirs, node_modules, .git, __pycache__, etc.
     O(N) in number of files with bounded per-file work.
@@ -140,29 +141,29 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
         ".entroly", ".claude", "dist", "build", ".tox", ".mypy_cache",
         ".pytest_cache", "target",  # Rust target dir
     }
-    
+
     files_scanned = 0
     top_level_dirs: set[str] = set()
-    
+
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip hidden and vendor directories
         dirnames[:] = [
             d for d in dirnames
             if d not in skip_dirs and not d.startswith(".")
         ]
-        
+
         # Track top-level modules
         rel = os.path.relpath(dirpath, root)
         if os.sep not in rel and rel != ".":
             top_level_dirs.add(rel)
-        
+
         for fname in filenames:
             if files_scanned >= max_files:
                 break
-                
+
             fpath = os.path.join(dirpath, fname)
             ext = os.path.splitext(fname)[1].lower()
-            
+
             # Language classification
             if ext in _PYTHON_EXTS:
                 stats.python_files += 1
@@ -178,13 +179,13 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
                     stats.other_files += 1
                 else:
                     continue  # Skip binary/media files
-            
+
             stats.total_files += 1
-            
+
             # Test file detection
             if _TEST_PATTERNS.search(fpath):
                 stats.test_files += 1
-            
+
             # Quick content scan (first 100 lines for speed)
             try:
                 with open(fpath, "r", encoding="utf-8", errors="replace") as f:
@@ -193,11 +194,11 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
                         if i >= 100:
                             break
                         lines.append(line)
-                    
+
                     content = "".join(lines)
                     line_count = len(lines)
                     stats.total_lines += line_count
-                    
+
                     # Count structural elements
                     for line in lines:
                         stripped = line.strip()
@@ -211,11 +212,11 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
                                                   "use ", "#include",
                                                   "require")):
                             stats.total_imports += 1
-                    
+
                     # FFI detection
                     if _FFI_MARKERS.search(content):
                         stats.ffi_files += 1
-                    
+
                     # Entropy approximation: compression ratio of content
                     if len(content) > 64:
                         try:
@@ -227,14 +228,14 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
                             stats.entropy_values.append(entropy)
                         except Exception:
                             pass
-                    
+
             except (OSError, UnicodeDecodeError):
                 continue
-            
+
             files_scanned += 1
-    
+
     stats.module_count = len(top_level_dirs)
-    
+
     return stats
 
 
@@ -244,27 +245,27 @@ def scan_codebase(root: Path, max_files: int = 5000) -> CodebaseStats:
 
 class ArchetypeOptimizer:
     """Manages archetype detection and per-archetype weight optimization.
-    
+
     Lifecycle:
       1. On startup: scan codebase → fingerprint → classify
       2. Load weight profile for detected archetype
       3. DreamingLoop optimizes weights for THIS archetype
       4. On shutdown: persist updated strategy table
     """
-    
+
     def __init__(self, data_dir: str | Path, project_root: str | Path | None = None):
         self._data_dir = Path(data_dir)
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._project_root = Path(project_root) if project_root else Path(".")
         self._strategy_path = self._data_dir / _STRATEGY_FILE
-        
+
         # State
         self._strategy_table: dict[str, dict[str, Any]] = self._load_strategy()
         self._current_archetype: str | None = None
         self._current_weights: dict[str, float] = dict(DEFAULT_WEIGHTS)
         self._last_fingerprint: dict[str, float] | None = None
         self._rust_engine = None
-        
+
         # Try to load the Rust archetype engine
         try:
             from entroly_core import ArchetypeEngine  # type: ignore
@@ -272,24 +273,24 @@ class ArchetypeOptimizer:
             logger.info("ArchetypeOptimizer: using Rust engine")
         except (ImportError, AttributeError):
             logger.info("ArchetypeOptimizer: using pure-Python fallback")
-    
+
     def detect_and_load(self) -> ArchetypeInfo:
         """Scan the codebase, detect archetype, and load its weights.
-        
+
         This is the main entry point, called once per session.
         Returns ArchetypeInfo with the detected archetype and weights.
         """
         # Step 1: Scan codebase
         stats = scan_codebase(self._project_root)
-        
+
         # Step 2: Compute fingerprint
         fingerprint = self._compute_fingerprint(stats)
         self._last_fingerprint = fingerprint
-        
+
         # Step 3: Classify into archetype
         archetype_label = self._classify(fingerprint, stats)
         self._current_archetype = archetype_label
-        
+
         # Step 4: Load weights for this archetype
         if archetype_label in self._strategy_table:
             entry = self._strategy_table[archetype_label]
@@ -315,7 +316,7 @@ class ArchetypeOptimizer:
                 "ArchetypeOptimizer: new archetype '%s' initialized",
                 archetype_label,
             )
-        
+
         return ArchetypeInfo(
             archetype_id=hash(archetype_label) % 10000,
             label=archetype_label,
@@ -323,42 +324,42 @@ class ArchetypeOptimizer:
             weights=self._current_weights.copy(),
             sample_count=self._strategy_table.get(archetype_label, {}).get("sample_count", 0),
         )
-    
+
     def current_weights(self) -> dict[str, float]:
         """Return the current weight profile for the active archetype."""
         return self._current_weights.copy()
-    
+
     def current_archetype(self) -> str | None:
         """Return the label of the current archetype."""
         return self._current_archetype
-    
+
     def update_weights(self, new_weights: dict[str, float]) -> None:
         """Update the weights for the current archetype.
-        
+
         Called by the DreamingLoop when it finds an improvement.
         Persists the update to disk.
         """
         if not self._current_archetype:
             return
-        
+
         self._current_weights = new_weights.copy()
-        
+
         entry = self._strategy_table.setdefault(self._current_archetype, {})
         entry["weights"] = new_weights.copy()
         entry["sample_count"] = entry.get("sample_count", 0) + 1
         entry["updated_at"] = time.time()
-        
+
         # Update confidence based on sample count (more samples = more confident)
         samples = entry["sample_count"]
         entry["confidence"] = min(0.95, 0.5 + 0.05 * min(samples, 9))
-        
+
         self._save_strategy()
-        
+
         logger.debug(
             "ArchetypeOptimizer: updated weights for '%s' (sample %d)",
             self._current_archetype, samples,
         )
-    
+
     def get_export_weights(self) -> dict[str, float]:
         """Export the 5 PRISM scoring weights (4D + resonance)."""
         return {
@@ -368,7 +369,7 @@ class ArchetypeOptimizer:
             "w_e": self._current_weights.get("w_entropy", 0.20),
             "w_res": self._current_weights.get("w_resonance", 0.10),
         }
-    
+
     def stats(self) -> dict[str, Any]:
         """Return optimizer statistics for dashboard/monitoring."""
         return {
@@ -384,14 +385,14 @@ class ArchetypeOptimizer:
             "current_weights": self._current_weights,
             "fingerprint": self._last_fingerprint,
         }
-    
+
     # ── Private Methods ──────────────────────────────────────────
-    
+
     def _compute_fingerprint(self, stats: CodebaseStats) -> dict[str, float]:
         """Compute a normalized fingerprint dict from stats."""
         total = max(stats.total_files, 1)
         total_lines = max(stats.total_lines, 1)
-        
+
         fp = {
             "lang_python": stats.python_files / total,
             "lang_rust": stats.rust_files / total,
@@ -408,7 +409,7 @@ class ArchetypeOptimizer:
             "module_count": _log_norm(stats.module_count, 50),
             "ffi_ratio": stats.ffi_files / total,
         }
-        
+
         # Entropy stats
         if stats.entropy_values:
             n = len(stats.entropy_values)
@@ -419,12 +420,12 @@ class ArchetypeOptimizer:
         else:
             fp["entropy_mean"] = 0.5
             fp["entropy_var"] = 0.1
-        
+
         return fp
-    
+
     def _classify(self, fingerprint: dict[str, float], stats: CodebaseStats) -> str:
         """Classify a fingerprint into an archetype label.
-        
+
         Uses a simple rule-based system that maps structural
         features to well-known codebase patterns. This is robust
         and interpretable — no fragile unsupervised clustering
@@ -438,14 +439,14 @@ class ArchetypeOptimizer:
         class_ratio = fingerprint.get("class_ratio", 0)
         ffi_ratio = fingerprint.get("ffi_ratio", 0)
         module_count = stats.module_count
-        
+
         # Multi-language monorepo detection
         strong_langs = sum(1 for x in [lang_py, lang_rs, lang_js] if x > 0.15)
         if strong_langs >= 2 and module_count >= 5:
             if ffi_ratio > 0.05:
                 return "polyglot_ffi_monorepo"
             return "fullstack_monorepo"
-        
+
         # Single-language archetypes
         if lang_py > 0.5:
             if class_ratio > 0.3 and test_ratio > 0.15:
@@ -454,7 +455,7 @@ class ArchetypeOptimizer:
                 return "python_data_science"
             else:
                 return "python_backend"
-        
+
         if lang_rs > 0.5:
             if ffi_ratio > 0.1:
                 return "rust_ffi_library"
@@ -462,27 +463,27 @@ class ArchetypeOptimizer:
                 return "rust_well_tested"
             else:
                 return "rust_systems"
-        
+
         if lang_js > 0.5:
             if class_ratio > 0.25:
                 return "js_component_framework"
             else:
                 return "js_frontend"
-        
+
         # Fallback: use the dominant language with a generic label
         dominant = max(
             [("python", lang_py), ("rust", lang_rs), ("js", lang_js)],
             key=lambda x: x[1],
         )
         return f"{dominant[0]}_general"
-    
+
     def _seed_weights(self, archetype_label: str) -> dict[str, float]:
         """Return seed weights for a given archetype.
-        
+
         These are empirically derived starting points that give
         good initial performance. The DreamingLoop will optimize
         from here.
-        
+
         Design rationale for w_resonance (PRISM 5D):
           - Rust systems: HIGH resonance (0.15) — tightly coupled code
             produces supermodular context (function + its trait impl
@@ -566,7 +567,7 @@ class ArchetypeOptimizer:
             },
         }
         return seeds.get(archetype_label, dict(DEFAULT_WEIGHTS))
-    
+
     def _load_strategy(self) -> dict[str, dict[str, Any]]:
         """Load the persisted strategy table from disk."""
         if self._strategy_path.exists():
@@ -578,7 +579,7 @@ class ArchetypeOptimizer:
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning("Failed to load archetype strategy: %s", e)
         return {}
-    
+
     def _save_strategy(self) -> None:
         """Persist the strategy table to disk (atomic write)."""
         try:
@@ -606,7 +607,7 @@ class ArchetypeOptimizer:
 # Utility Functions
 # ═══════════════════════════════════════════════════════════════════
 
-import math
+
 
 def _log_norm(value: float, max_ref: float) -> float:
     """Log-normalize to [0, 1]. f(x) = ln(1+x) / ln(1+max_ref)."""

@@ -79,9 +79,8 @@ Tu daemon sueña → descubre una mejor estrategia → la comparte (anónimament
 Abres tu laptop → tu IA ya absorbió todo
 ```
 
-Esto no es teórico. Está en producción. Ahora mismo.
 
-**El código es MIT. El foso es la red:**
+**Efecto de red:**
 - Cada nuevo usuario mejora la IA de todos — esa base instalada no se puede forkear
 - Costo de infraestructura: **$0**. Funciona en GitHub. Sin servidores. Sin GPUs. Sin nube
 

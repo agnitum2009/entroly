@@ -132,9 +132,8 @@ Your daemon dreams → discovers a better strategy → shares it (anonymously)
 You open your laptop → your AI already absorbed all of it
 ```
 
-This is not theoretical. It's shipping. Right now.
 
-**The code is MIT. The moat is the network:**
+**Network effect:**
 - Every new user makes everyone else's AI better — that installed base can't be forked
 - Your code never moves. Only optimization weights — noise-protected and anonymous
 - Infrastructure cost: **$0**. It runs on GitHub. No servers. No GPUs. No cloud
@@ -179,7 +178,7 @@ Also: OpenAI API • Anthropic API • LangChain • LlamaIndex • MCP-native
 
 ---
 
-## Proof — Not Promises
+## Benchmarks
 
 ### Live Evolution Trace
 
