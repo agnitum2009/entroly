@@ -259,9 +259,8 @@ impl PoissonRate {
 
 /// A subscriber (agent) on the cognitive bus.
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 struct Subscriber {
-    agent_id: String,
+    _agent_id: String,
     subscribed_types: Vec<EventType>,
     /// Per-event-type Poisson rate models
     rate_models: HashMap<String, PoissonRate>,
@@ -282,7 +281,7 @@ struct Subscriber {
 impl Subscriber {
     fn new(agent_id: &str) -> Self {
         Subscriber {
-            agent_id: agent_id.to_string(),
+            _agent_id: agent_id.to_string(),
             subscribed_types: Vec::new(),
             rate_models: HashMap::new(),
             event_counts: HashMap::new(),
@@ -712,11 +711,11 @@ impl CognitiveBus {
     }
 }
 
+#[cfg(test)]
 // ── Rust-only helpers (not exposed to Python) ──────────────────────────
 
 impl CognitiveBus {
     /// Drain raw events (Rust-only, for internal use and testing).
-    #[allow(dead_code)]
     pub fn drain_raw(&mut self, agent_id: &str, limit: usize) -> Vec<BusEvent> {
         match self.subscribers.get_mut(agent_id) {
             Some(sub) => sub.drain(limit),
@@ -725,7 +724,6 @@ impl CognitiveBus {
     }
 
     /// Drain raw memory bridge events (Rust-only, for internal use and testing).
-    #[allow(dead_code)]
     pub fn drain_memory_bridge_raw(&mut self) -> Vec<BusEvent> {
         std::mem::take(&mut self.memory_bridge_queue)
     }

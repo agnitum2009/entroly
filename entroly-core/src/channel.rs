@@ -179,7 +179,6 @@ pub fn channel_trailing_pass(
 /// U-shaped: peaks at start (primacy) and end (recency), valley in the
 /// middle.  Models "Lost in the Middle" (Liu et al., 2023).
 #[inline]
-#[allow(dead_code)]
 pub fn attention_weight(position: usize, total: usize) -> f64 {
     if total <= 1 {
         return 1.0;
@@ -315,7 +314,7 @@ pub fn semantic_interleave(
 ///
 /// This is "information received by decoder" / "information sent by encoder"
 /// — the channel efficiency.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn information_reward(
     fragment_utils: &[(f64, f64, usize)], // (utilization, entropy, position)
     total_fragments: usize,

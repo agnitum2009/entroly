@@ -51,7 +51,7 @@ pub enum AnomalyType {
 }
 
 impl AnomalyType {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn label(&self) -> &'static str {
         match self {
             AnomalyType::Spike => "ENTROPY_SPIKE",

@@ -84,8 +84,7 @@ impl LshTable {
         let key = self.hash_key(fp);
         self.buckets.entry(key).or_default().push(idx);
     }
-
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn remove(&mut self, fp: u64, idx: usize) {
         let key = self.hash_key(fp);
         if let Some(bucket) = self.buckets.get_mut(&key) {
@@ -140,7 +139,7 @@ impl LshIndex {
     }
 
     /// Remove a fragment entry (called on eviction).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn remove(&mut self, fp: u64, idx: usize) {
         for table in &mut self.tables {
             table.remove(fp, idx);
@@ -167,7 +166,7 @@ impl LshIndex {
     }
 
     /// Number of unique entries in the first table (approximate size).
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn approx_size(&self) -> usize {
         self.tables[0].buckets.values().map(|b| b.len()).sum()
     }

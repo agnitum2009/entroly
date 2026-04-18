@@ -259,7 +259,7 @@ pub fn compress_level2(
 ///
 /// Classic power iteration with damping factor d=0.85.
 /// Converges in ~15-20 iterations for typical code graphs.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn compute_pagerank(
     dep_graph: &DepGraph,
     fragment_ids: &[String],

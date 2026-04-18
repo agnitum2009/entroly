@@ -145,7 +145,6 @@ impl<const N: usize> SymMatrixN<N> {
 pub type SymMatrix4 = SymMatrixN<4>;
 
 /// Extended 5D matrix (Recency, Frequency, Semantic, Entropy, Resonance).
-#[allow(dead_code)]
 pub type SymMatrix5 = SymMatrixN<5>;
 
 // ════════════════════════════════════════════════════════════════════
@@ -286,7 +285,6 @@ impl<const N: usize> PrismOptimizerN<N> {
     }
 
     /// Return current eigenvalues of the gradient covariance matrix.
-    #[allow(dead_code)]
     pub fn eigenvalues(&self) -> Vec<f64> {
         let (_, eigenvalues) = self.covariance.jacobi_eigendecomposition();
         eigenvalues
@@ -298,7 +296,6 @@ impl<const N: usize> PrismOptimizerN<N> {
     /// - If dimension 4 (resonance) carries <5% spectral energy, it's not contributing
     ///   meaningful signal yet — the system is still in cold-start.
     /// - If one dimension dominates (>60%), the others are being drowned out.
-    #[allow(dead_code)]
     pub fn spectral_energy(&self) -> Vec<f64> {
         let (_, eigenvalues) = self.covariance.jacobi_eigendecomposition();
         let total: f64 = eigenvalues.iter().map(|ev| ev.abs()).sum();

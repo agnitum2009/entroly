@@ -105,12 +105,11 @@ struct Candidate {
 }
 
 /// Result of the IOS selection.
-#[allow(dead_code)]
 pub struct SdsResult {
     /// (fragment_index, chosen_resolution) pairs
     pub selections: Vec<(usize, Resolution)>,
     pub total_tokens: u32,
-    pub(crate) total_value: f64,
+    pub(crate) _total_value: f64,
     pub diversity_score: f64,  // Average pairwise diversity of selected set
 }
 
@@ -205,7 +204,7 @@ pub fn ios_select(
         return SdsResult {
             selections: vec![],
             total_tokens: 0,
-            total_value: 0.0,
+            _total_value: 0.0,
             diversity_score: 1.0,
         };
     }
@@ -360,7 +359,7 @@ pub fn ios_select(
     }
 
     if candidates.is_empty() || remaining_budget == 0 {
-        let total_value: f64 = pinned.iter()
+        let _total_value: f64 = pinned.iter()
             .map(|&(i, _)| {
                 let fm = feedback_mults.get(&fragments[i].fragment_id).copied().unwrap_or(1.0);
                 compute_relevance(&fragments[i], w_recency, w_frequency, w_semantic, w_entropy, fm)
@@ -369,7 +368,7 @@ pub fn ios_select(
         return SdsResult {
             selections: pinned,
             total_tokens: pinned_tokens,
-            total_value,
+            _total_value: (_total_value * 10000.0).round() / 10000.0,
             diversity_score: 1.0,
         };
     }
@@ -412,7 +411,7 @@ pub fn ios_select(
             return SdsResult {
                 selections,
                 total_tokens: fast_tokens,
-                total_value: (fast_value * 10000.0).round() / 10000.0,
+                _total_value: (fast_value * 10000.0).round() / 10000.0,
                 diversity_score: compute_pairwise_diversity(&fast_hashes),
             };
         }
@@ -423,7 +422,7 @@ pub fn ios_select(
     let mut selected_hashes: Vec<u64> = pinned_hashes;
     let mut selected_frags: Vec<bool> = vec![false; fragments.len()]; // Track which fragment_idx is selected
     let mut budget_used = pinned_tokens;
-    let mut total_value: f64 = selected.iter()
+    let mut _total_value: f64 = selected.iter()
         .map(|&(i, _)| {
             let fm = feedback_mults.get(&fragments[i].fragment_id).copied().unwrap_or(1.0);
             compute_relevance(&fragments[i], w_recency, w_frequency, w_semantic, w_entropy, fm)
@@ -502,7 +501,7 @@ pub fn ios_select(
                 selected_hashes.push(cand.simhash);
                 selected_frags[cand.frag_idx] = true;
                 budget_used += cand.token_cost;
-                total_value += cand.base_value; // Track pre-diversity value for reporting
+                _total_value += cand.base_value; // Track pre-diversity value for reporting
             }
             None => break, // No more candidates fit
         }
@@ -514,7 +513,7 @@ pub fn ios_select(
     SdsResult {
         selections: selected,
         total_tokens: budget_used,
-        total_value: (total_value * 10000.0).round() / 10000.0,
+        _total_value: (_total_value * 10000.0).round() / 10000.0,
         diversity_score,
     }
 }

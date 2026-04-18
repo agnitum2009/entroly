@@ -60,12 +60,11 @@ impl Default for ScoringWeights {
 }
 
 /// Result of a knapsack optimization run.
-#[allow(dead_code)]
 pub struct KnapsackResult {
     pub selected_indices: Vec<usize>,
     pub total_tokens: u32,
     pub total_relevance: f64,
-    pub(crate) method: &'static str,
+    pub(crate) _method: &'static str,
     /// Lagrange multiplier λ* for the budget constraint (soft path only; 0.0 for hard paths).
     /// Forward: p_i = σ((s_i − λ*·tokens_i) / τ)
     /// Store in EntrolyEngine and reuse in REINFORCE backward pass for exact consistency.
@@ -132,7 +131,7 @@ pub fn knapsack_optimize(
             selected_indices: vec![],
             total_tokens: 0,
             total_relevance: 0.0,
-            method: "empty",
+            _method: "empty",
             lambda_star: 0.0,
             dual_gap: 0.0,
         };
@@ -159,7 +158,7 @@ pub fn knapsack_optimize(
             selected_indices: pinned_indices,
             total_tokens: pinned_tokens,
             total_relevance,
-            method: "pinned_only",
+            _method: "pinned_only",
             lambda_star: 0.0,
             dual_gap: 0.0,
         };
@@ -193,7 +192,7 @@ pub fn knapsack_optimize(
         .collect();
 
     // ── Selection ────────────────────────────────────────────────────────────
-    let (method, mut selected, lambda_star, dual_gap) = if use_soft {
+    let (_method, mut selected, lambda_star, dual_gap) = if use_soft {
         let (sel, lam, gap) = soft_bisection_select(&scored, fragments, remaining_budget, temperature);
         ("soft_bisection", sel, lam, gap)
     } else if scored.len() <= 2000 {
@@ -214,7 +213,7 @@ pub fn knapsack_optimize(
         })
         .sum();
 
-    KnapsackResult { selected_indices: selected, total_tokens, total_relevance, method, lambda_star, dual_gap }
+    KnapsackResult { selected_indices: selected, total_tokens, total_relevance, _method, lambda_star, dual_gap }
 }
 
 // ── Public bisection helper ───────────────────────────────────────────────────
@@ -551,7 +550,7 @@ mod tests {
         assert!(ids.contains(&"a"), "Soft bisection should select high-value 'a'");
         assert!(!ids.contains(&"b"), "Soft bisection should exclude low-value 'b'");
         assert!(result.total_tokens <= 500);
-        assert_eq!(result.method, "soft_bisection");
+        assert_eq!(result._method, "soft_bisection");
     }
 
     #[test]

@@ -167,7 +167,6 @@ pub fn renyi_entropy_alpha(scores: &[f64], alpha: f64) -> f64 {
 /// When all pᵢ = 1/n (uniform distribution), H₂ = log₂(n).
 /// Used to normalize EGSC admission threshold to [0, 1] scale.
 #[inline]
-#[allow(dead_code)]
 pub fn renyi_max(n: usize) -> f64 {
     if n <= 1 { 0.0 } else { (n as f64).log2() }
 }
@@ -212,8 +211,8 @@ pub fn entropy_divergence(text: &str) -> f64 {
 /// ═══════════════════════════════════════════════════════════════════
 /// Compute bits-per-byte (BPB) — byte-level information density [0, 1].
 #[inline]
-#[allow(dead_code)]
-pub(crate) fn bits_per_byte(text: &str) -> f64 {
+#[cfg(test)]
+pub fn bits_per_byte(text: &str) -> f64 {
     if text.is_empty() {
         return 0.0;
     }
@@ -236,8 +235,8 @@ pub(crate) fn bits_per_byte(text: &str) -> f64 {
 
 /// BPB-weighted quality score: 60% density + 40% uniqueness.
 #[inline]
-#[allow(dead_code)]
-pub(crate) fn bpb_quality(text: &str, redundancy: f64) -> f64 {
+#[cfg(test)]
+pub fn bpb_quality(text: &str, redundancy: f64) -> f64 {
     let bpb = bits_per_byte(text);
     let uniqueness = 1.0 - redundancy.clamp(0.0, 1.0);
     (0.6 * bpb + 0.4 * uniqueness).clamp(0.0, 1.0)

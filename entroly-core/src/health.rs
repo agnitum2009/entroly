@@ -31,7 +31,7 @@ use crate::depgraph::DepGraph;
 /// Severity of a health issue (distinct from SAST severity — this is about
 /// maintenance burden, not security risk).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) enum HealthSeverity {
     Low,
     Medium,
@@ -39,8 +39,8 @@ pub(crate) enum HealthSeverity {
     Critical,
 }
 
+#[cfg(test)]
 impl HealthSeverity {
-    #[allow(dead_code)]
     pub(crate) fn label(self) -> &'static str {
         match self {
             HealthSeverity::Low      => "LOW",
@@ -82,8 +82,7 @@ impl CloneType {
         else if dist <= 16 { Some(CloneType::Structural) }
         else { None }
     }
-
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn label(self) -> &'static str {
         match self {
             CloneType::NearIdentical => "Type-1 (near-identical)",

@@ -445,9 +445,8 @@ fn compute_all_forward_overlaps(blocks: &[ConvBlock]) -> Vec<f64> {
 // ══════════════════════════════════════════════════════════════════════
 
 /// Multi-choice knapsack item: one block with 4 resolution options.
-#[allow(dead_code)]
 struct McItem {
-    index: usize,
+    _index: usize,
     value: f64,        // information value (higher = more costly to prune)
     tokens: u32,       // original token count
     protected: bool,   // user/system messages — always Verbatim
@@ -761,7 +760,7 @@ pub fn prune_conversation(
     let items: Vec<McItem> = blocks.iter().enumerate().map(|(pos, b)| {
         let value = score_block(b, pos, forward_values[pos], blocks.len(), &forward_refs, now, decay_lambda);
         let protected = matches!(b.kind, BlockKind::UserMessage | BlockKind::SystemMessage);
-        McItem { index: pos, value, tokens: b.token_count, protected }
+        McItem { _index: pos, value, tokens: b.token_count, protected }
     }).collect();
 
     // 4. Solve multi-choice knapsack via KKT dual bisection

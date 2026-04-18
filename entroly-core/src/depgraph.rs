@@ -681,9 +681,35 @@ impl DepGraph {
         boosts
     }
 
-    /// Find connected components — fragments that should be
-    /// selected or dropped together.
-#[allow(dead_code)]
+    /// Get all symbol → fragment_id mappings.
+    pub fn symbol_definitions(&self) -> &HashMap<String, String> {
+        &self.symbol_table
+    }
+
+    /// Check if a symbol is defined anywhere.
+    pub fn has_symbol(&self, symbol: &str) -> bool {
+        self.symbol_table.contains_key(symbol)
+    }
+
+    pub fn edge_count(&self) -> usize {
+        self.outgoing.values().map(|v| v.len()).sum()
+    }
+
+    pub fn node_count(&self) -> usize {
+        let mut nodes: HashSet<&str> = HashSet::new();
+        for (k, deps) in &self.outgoing {
+            nodes.insert(k);
+            for dep in deps {
+                nodes.insert(&dep.target_id);
+            }
+        }
+        nodes.len()
+    }
+
+}
+
+#[cfg(test)]
+impl DepGraph {
     pub fn connected_components(&self, fragment_ids: &[String]) -> Vec<Vec<String>> {
         let id_set: HashSet<&str> = fragment_ids.iter().map(|s| s.as_str()).collect();
         let mut visited: HashSet<String> = HashSet::new();
@@ -729,31 +755,6 @@ impl DepGraph {
         }
 
         components
-    }
-
-    /// Get all symbol → fragment_id mappings.
-    pub fn symbol_definitions(&self) -> &HashMap<String, String> {
-        &self.symbol_table
-    }
-
-    /// Check if a symbol is defined anywhere.
-    pub fn has_symbol(&self, symbol: &str) -> bool {
-        self.symbol_table.contains_key(symbol)
-    }
-
-    pub fn edge_count(&self) -> usize {
-        self.outgoing.values().map(|v| v.len()).sum()
-    }
-
-    pub fn node_count(&self) -> usize {
-        let mut nodes: HashSet<&str> = HashSet::new();
-        for (k, deps) in &self.outgoing {
-            nodes.insert(k);
-            for dep in deps {
-                nodes.insert(&dep.target_id);
-            }
-        }
-        nodes.len()
     }
 }
 

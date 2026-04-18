@@ -46,8 +46,7 @@ impl Severity {
             Severity::Critical => 9.5,
         }
     }
-
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn label(self) -> &'static str {
         match self {
             Severity::Info     => "INFO",
@@ -82,7 +81,7 @@ pub struct SastRule {
 
 /// A taint source — a variable or expression that receives user-controlled data.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[cfg(test)]
 struct TaintSource {
     var_name: String,
     line:     usize,
@@ -90,7 +89,7 @@ struct TaintSource {
 
 /// A taint-flow finding: user input reached a sink.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) struct TaintFinding {
     pub source_line: usize,
     pub source_var:  String,

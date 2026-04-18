@@ -212,14 +212,16 @@ impl DedupIndex {
         self.fingerprints.len()
     }
 
+}
+
+#[cfg(test)]
+impl DedupIndex {
     /// Get the stored fingerprint for a fragment.
-#[allow(dead_code)]
     pub fn get_fingerprint(&self, fragment_id: &str) -> Option<u64> {
         self.fingerprints.get(fragment_id).copied()
     }
 
     /// Export all fingerprints for checkpointing.
-#[allow(dead_code)]
     pub fn export_fingerprints(&self) -> Vec<(String, u64)> {
         self.fingerprints.iter()
             .map(|(k, v)| (k.clone(), *v))

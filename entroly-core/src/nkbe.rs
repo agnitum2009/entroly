@@ -38,9 +38,8 @@ pub struct AgentBudgetState {
 
 /// Fragment descriptor for NKBE allocation.
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct NkbeFragment {
-    pub id: String,
+    pub _id: String,
     pub relevance: f64,
     pub token_cost: u32,
 }
@@ -116,7 +115,7 @@ impl NkbeAllocator {
         for agent in &mut self.agents {
             if agent.name == agent_name {
                 agent.fragments.push(NkbeFragment {
-                    id: fragment_id.to_string(),
+                    _id: fragment_id.to_string(),
                     relevance: relevance.clamp(0.0, 1.0),
                     token_cost: token_cost.max(1),
                 });
@@ -358,7 +357,9 @@ impl NkbeAllocator {
 /// ∂E[R]/∂wₖ = Σᵢ (aᵢ − p*ᵢ) · R · σ'(zᵢ/τ) · featureᵢₖ
 ///
 /// Returns gradient vector [Δw_recency, Δw_frequency, Δw_semantic, Δw_entropy].
-#[allow(dead_code)]
+#[cfg(test)]
+/// REINFORCE policy gradient for NKBE budget allocation.
+/// Used by the DreamingLoop for offline weight updates.
 pub fn reinforce_gradient(
     features: &[[f64; 4]],    // Per-fragment feature vectors
     selections: &[bool],       // Whether each fragment was selected
